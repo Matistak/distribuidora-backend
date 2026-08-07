@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -20,7 +20,7 @@ model Venta {
   producto          String
   codMarca          Int
   marca             String
-  fecha             DateTime @db.Date
+  fecha             DateTime
   anhoMes           Int
   anho              Int
   mes               Int
@@ -72,7 +72,7 @@ model Carga {
   filasNuevas  Int      @default(0)
   filasOmitidas Int     @default(0)
   estado       String   @default("procesado")
-  creadoEn     DateTime @default(now()) @db.Timestamptz()
+  creadoEn     DateTime @default(now())
 
   ventas Venta[]
 }

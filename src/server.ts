@@ -1,3 +1,6 @@
+import { bootstrap } from "./bootstrap.js";
+bootstrap();
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
@@ -46,7 +49,7 @@ async function start() {
   const port = parseInt(process.env["PORT"] ?? "3001", 10);
 
   try {
-    await app.listen({ port, host: "0.0.0.0" });
+    await app.listen({ port, host: "127.0.0.1" });
     console.log(`\n  🚀 Backend corriendo en http://localhost:${port}`);
     console.log(`  📋 Endpoints:`);
     console.log(`     POST   /api/uploads        — subir Excel`);

@@ -11,7 +11,10 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "lint": "eslint src/",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "package": "npm run build && npm run package:binary && npm run package:copy-assets",
+    "package:binary": "node scripts/build-binary.js",
+    "package:copy-assets": "node scripts/copy-assets.js"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

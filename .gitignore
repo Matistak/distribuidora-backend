@@ -1,5 +1,19 @@
 node_modules/
 dist/
 .env
+.env.*
+!.env.example
 *.log
 .DS_Store
+
+# Local SQLite databases and runtime files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Bun build artifacts
+*.bun-build
+
+# Test and coverage output
+coverage/

@@ -8,8 +8,8 @@ function whereClausula(
 ): Prisma.Sql {
   const conds: Prisma.Sql[] = [];
 
-  if (desde) conds.push(Prisma.sql`v."fecha" >= ${desde}::date`);
-  if (hasta) conds.push(Prisma.sql`v."fecha" <= ${hasta}::date`);
+  if (desde) conds.push(Prisma.sql`v."fecha" >= DATE(${desde})`);
+  if (hasta) conds.push(Prisma.sql`v."fecha" <= DATE(${hasta})`);
   if (f.vendedor) conds.push(Prisma.sql`v."vendedor" = ${f.vendedor}`);
   if (f.canal) conds.push(Prisma.sql`v."canal" = ${f.canal}`);
   if (f.ciudad) conds.push(Prisma.sql`v."ciudad" = ${f.ciudad}`);
@@ -40,14 +40,14 @@ export async function obtenerDashboard(
     }>
   >(Prisma.sql`
     SELECT
-      COALESCE(SUM(v."montoIvaBrutaGua"), 0)::float          AS "ventaBruta",
-      COALESCE(SUM(v."montoVtaNetaGua"), 0)::float           AS "ventaNeta",
-      COUNT(DISTINCT v."nroDoc")::int                         AS "cantidadFacturas",
-      COALESCE(SUM(v."vtaUnit"), 0)::float                    AS "unidadesVendidas",
-      COUNT(DISTINCT v."codCliente")::int                     AS "clientesActivos",
-      COUNT(DISTINCT v."codProducto")::int                    AS "productosDistintos",
-      COALESCE(SUM(v."costoVtaGua"), 0)::float                AS "costoTotal",
-      COUNT(DISTINCT CASE WHEN v."tipoDoc" ILIKE '%CREDITO%' THEN v."nroDoc" END)::int AS "notasCredito"
+      CAST(COALESCE(SUM(v."montoIvaBrutaGua"), 0) AS REAL)          AS "ventaBruta",
+      CAST(COALESCE(SUM(v."montoVtaNetaGua"), 0) AS REAL)           AS "ventaNeta",
+      CAST(COUNT(DISTINCT v."nroDoc") AS INTEGER)                    AS "cantidadFacturas",
+      CAST(COALESCE(SUM(v."vtaUnit"), 0) AS REAL)                    AS "unidadesVendidas",
+      CAST(COUNT(DISTINCT v."codCliente") AS INTEGER)                AS "clientesActivos",
+      CAST(COUNT(DISTINCT v."codProducto") AS INTEGER)               AS "productosDistintos",
+      CAST(COALESCE(SUM(v."costoVtaGua"), 0) AS REAL)                AS "costoTotal",
+      CAST(COUNT(DISTINCT CASE WHEN LOWER(v."tipoDoc") LIKE LOWER('%CREDITO%') THEN v."nroDoc" END) AS INTEGER) AS "notasCredito"
     FROM "Venta" v
     WHERE ${where}
   `);
@@ -69,55 +69,55 @@ export async function obtenerDashboard(
     periodoRaw,
   ] = await Promise.all([
     queryRaw<Array<{ label: string; valor: number }>>(Prisma.sql`
-      SELECT v."dia"::text AS label, SUM(v."montoVtaNetaGua")::float AS valor
+      SELECT CAST(v."dia" AS TEXT) AS label, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor
       FROM "Venta" v WHERE ${where}
       GROUP BY v."dia" ORDER BY v."dia" ASC
     `),
 
     queryRaw<Array<{ nombre: string; valor: number; participacion: number }>>(Prisma.sql`
-      SELECT v."vendedor" AS nombre, SUM(v."montoVtaNetaGua")::float AS valor,
-             SUM(v."montoVtaNetaGua")::float / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+      SELECT v."vendedor" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."vendedor" ORDER BY valor DESC LIMIT 10
     `),
 
     queryRaw<Array<{ nombre: string; valor: number; participacion: number }>>(Prisma.sql`
-      SELECT v."ciudad" AS nombre, SUM(v."montoVtaNetaGua")::float AS valor,
-             SUM(v."montoVtaNetaGua")::float / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+      SELECT v."ciudad" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."ciudad" ORDER BY valor DESC LIMIT 7
     `),
 
     queryRaw<Array<{ nombre: string; valor: number; participacion: number }>>(Prisma.sql`
-      SELECT v."canal" AS nombre, SUM(v."montoVtaNetaGua")::float AS valor,
-             SUM(v."montoVtaNetaGua")::float / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+      SELECT v."canal" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."canal" ORDER BY valor DESC LIMIT 8
     `),
 
     queryRaw<Array<{ nombre: string; valor: number; participacion: number }>>(Prisma.sql`
-      SELECT v."marca" AS nombre, SUM(v."montoVtaNetaGua")::float AS valor,
-             SUM(v."montoVtaNetaGua")::float / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+      SELECT v."marca" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."marca" ORDER BY valor DESC LIMIT 10
     `),
 
     queryRaw<Array<{ nombre: string; valor: number; participacion: number }>>(Prisma.sql`
-      SELECT v."razonSocial" AS nombre, SUM(v."montoVtaNetaGua")::float AS valor,
-             SUM(v."montoVtaNetaGua")::float / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+      SELECT v."razonSocial" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."razonSocial" ORDER BY valor DESC LIMIT 5
     `),
 
     queryRaw<Array<{ nombre: string; valor: number; participacion: number }>>(Prisma.sql`
-      SELECT v."producto" AS nombre, SUM(v."montoVtaNetaGua")::float AS valor,
-             SUM(v."montoVtaNetaGua")::float / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+      SELECT v."producto" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."producto" ORDER BY valor DESC LIMIT 8
     `),
 
     queryRaw<Array<{ desde: string; hasta: string }>>(Prisma.sql`
-      SELECT MIN(v."fecha")::text AS desde, MAX(v."fecha")::text AS hasta
+      SELECT MIN(v."fecha") AS desde, MAX(v."fecha") AS hasta
       FROM "Venta" v WHERE ${where}
     `),
   ]);
