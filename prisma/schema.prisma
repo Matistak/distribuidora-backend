@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Venta {
+  id Int @id @default(autoincrement())
+
+  codCompania       Int
+  compania          String
+  codDistribuidora  Int
+  distribuidora     String
+  codCliente        Int
+  razonSocial       String
+  codProducto       Int
+  producto          String
+  codMarca          Int
+  marca             String
+  fecha             DateTime @db.Date
+  anhoMes           Int
+  anho              Int
+  mes               Int
+  dia               Int
+  vtaUnit           Float
+  montoIvaBrutaGua  Float
+  costoVtaGua       Float
+  montoVtaNetaGua   Float
+  codCanal          Int
+  canal             String
+  codRamo           Int
+  ramo              String
+  codVendedor       Int
+  vendedor          String
+  tipoDoc           String
+  nroDoc            String
+  nroComprobante    Int
+  codZona           Int
+  zona              String
+  codTipoProducto   Int
+  tipoProducto      String
+  precioConIva      Float
+  precioSinIva      Float
+  porcDescuento     Float
+  precioLista       Float
+  iva               Float
+  ciudad            String
+  ruc               String
+  latitud           Float
+  longitud          Float
+
+  cargaId Int
+  carga   Carga @relation(fields: [cargaId], references: [id])
+
+  @@unique([nroDoc, codProducto, nroComprobante])
+  @@index([fecha])
+  @@index([vendedor])
+  @@index([canal])
+  @@index([ciudad])
+  @@index([zona])
+  @@index([marca])
+  @@index([razonSocial])
+}
+
+model Carga {
+  id           Int      @id @default(autoincrement())
+  archivo      String
+  filasTotales Int
+  filasNuevas  Int      @default(0)
+  filasOmitidas Int     @default(0)
+  estado       String   @default("procesado")
+  creadoEn     DateTime @default(now()) @db.Timestamptz()
+
+  ventas Venta[]
+}
