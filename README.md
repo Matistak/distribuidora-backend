@@ -24,11 +24,11 @@ Copiá `.env.example` a `.env`:
 cp .env.example .env
 ```
 
-| Variable        | Descripción                             | Default |
-| --------------- | --------------------------------------- | ------- |
-| `DATABASE_URL`  | Archivo SQLite de desarrollo             | `file:./distribuidora.db` |
-| `PORT`          | Puerto local del servidor                | `3001` |
-| `CORS_ORIGIN`   | Orígenes CORS separados por coma        | `*` |
+| Variable       | Descripción                      | Default                   |
+| -------------- | -------------------------------- | ------------------------- |
+| `DATABASE_URL` | Archivo SQLite de desarrollo     | `file:./distribuidora.db` |
+| `PORT`         | Puerto local del servidor        | `3001`                    |
+| `CORS_ORIGIN`  | Orígenes CORS separados por coma | `*`                       |
 
 En desarrollo, la base está en `prisma/distribuidora.db`. En el binario
 empaquetado, `src/bootstrap.ts` copia la base semilla al directorio de datos de
@@ -72,35 +72,38 @@ Antes de agregar optimizaciones, se debe probar con al menos 25.000, 300.000 y
 
 ### Consultas
 
-| Método | Ruta             | Descripción                                             |
-| ------ | ---------------- | ------------------------------------------------------- |
-| `GET`  | `/api/dashboard` | KPIs, series y rankings (vendedor, cliente, etc) |
-| `GET`  | `/api/ventas`    | Registros de ventas paginados y filtrables              |
-| `GET`  | `/api/filtros`   | Opciones de filtro disponibles (vendedor, canal, etc)   |
+| Método | Ruta             | Descripción                                           |
+| ------ | ---------------- | ----------------------------------------------------- |
+| `GET`  | `/api/dashboard` | KPIs, series y rankings (vendedor, cliente, etc)      |
+| `GET`  | `/api/ventas`    | Registros de ventas paginados y filtrables            |
+| `GET`  | `/api/filtros`   | Opciones de filtro disponibles (vendedor, canal, etc) |
 
 ### Sistema
 
-| Método | Ruta      | Descripción |
-| ------ | --------- | ----------- |
+| Método | Ruta      | Descripción  |
+| ------ | --------- | ------------ |
 | `GET`  | `/health` | Health check |
 
 ### Parámetros de filtro
 
-| Parámetro  | Tipo   | Descripción        |
-| ---------- | ------ | ------------------ |
+| Parámetro  | Tipo   | Descripción                                      |
+| ---------- | ------ | ------------------------------------------------ |
 | `desde`    | string | Fecha inicio (YYYY-MM-DD), para `/api/dashboard` |
 | `hasta`    | string | Fecha fin (YYYY-MM-DD), para `/api/dashboard`    |
-| `vendedor` | string | Filtrar por vendedor      |
-| `canal`    | string | Filtrar por canal         |
-| `ciudad`   | string | Filtrar por ciudad        |
-| `zona`     | string | Filtrar por zona          |
+| `vendedor` | string | Filtrar por vendedor                             |
+| `canal`    | string | Filtrar por canal                                |
+| `ciudad`   | string | Filtrar por ciudad                               |
+| `zona`     | string | Filtrar por zona                                 |
 
 ### Paginación (`/api/ventas`)
 
-| Parámetro   | Tipo   | Default | Máximo |
-| ----------- | ------ | ------- | ------ |
-| `page`      | number | 1       | -      |
-| `pageSize`  | number | 20      | 100    |
+| Parámetro  | Tipo   | Default | Máximo |
+| ---------- | ------ | ------- | ------ |
+| `page`     | number | 1       | -      |
+| `pageSize` | number | 20      | 100    |
+
+`/api/ventas` acepta también `desde` y `hasta` con formato `YYYY-MM-DD` para
+aplicar el mismo rango de fechas que el dashboard.
 
 ## Scripts
 

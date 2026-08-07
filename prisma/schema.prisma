@@ -37,7 +37,7 @@ model Venta {
   vendedor          String
   tipoDoc           String
   nroDoc            String
-  nroComprobante    Int
+  nroComprobante    BigInt
   codZona           Int
   zona              String
   codTipoProducto   Int

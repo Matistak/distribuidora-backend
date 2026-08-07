@@ -8,6 +8,8 @@ export async function ventasRoutes(app: FastifyInstance) {
     Querystring: {
       page?: string;
       pageSize?: string;
+      desde?: string;
+      hasta?: string;
       vendedor?: string;
       canal?: string;
       ciudad?: string;
@@ -15,10 +17,23 @@ export async function ventasRoutes(app: FastifyInstance) {
     };
   }>("/api/ventas", async (req, reply) => {
     const page = Math.max(parseInt(req.query.page ?? "1", 10) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize ?? "20", 10) || 20, 1), 100);
-    const { vendedor, canal, ciudad, zona } = req.query;
+    const pageSize = Math.min(
+      Math.max(parseInt(req.query.pageSize ?? "20", 10) || 20, 1),
+      100,
+    );
+    const { desde, hasta, vendedor, canal, ciudad, zona } = req.query;
 
     const where: Record<string, unknown> = {};
+    if (desde || hasta) {
+      const fecha: { gte?: Date; lt?: Date } = {};
+      if (desde) fecha.gte = new Date(`${desde}T00:00:00.000Z`);
+      if (hasta) {
+        const siguienteDia = new Date(`${hasta}T00:00:00.000Z`);
+        siguienteDia.setUTCDate(siguienteDia.getUTCDate() + 1);
+        fecha.lt = siguienteDia;
+      }
+      where.fecha = fecha;
+    }
     if (vendedor) where.vendedor = vendedor;
     if (canal) where.canal = canal;
     if (ciudad) where.ciudad = ciudad;
@@ -62,7 +77,7 @@ export async function ventasRoutes(app: FastifyInstance) {
       vendedor: v.vendedor,
       tipoDoc: v.tipoDoc,
       nroDoc: v.nroDoc,
-      nroComprobante: v.nroComprobante,
+      nroComprobante: Number(v.nroComprobante),
       codZona: v.codZona,
       zona: v.zona,
       codTipoProducto: v.codTipoProducto,
