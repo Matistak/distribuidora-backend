@@ -57,6 +57,7 @@ model Venta {
 
   @@unique([nroDoc, codProducto, nroComprobante])
   @@index([fecha])
+  @@index([fecha(sort: Desc), nroDoc(sort: Asc)])
   @@index([vendedor])
   @@index([canal])
   @@index([ciudad])
@@ -71,6 +72,7 @@ model Carga {
   filasTotales Int
   filasNuevas  Int      @default(0)
   filasOmitidas Int     @default(0)
+  filasErrores  Int     @default(0)
   estado       String   @default("procesado")
   creadoEn     DateTime @default(now())
 

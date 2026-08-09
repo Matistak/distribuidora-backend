@@ -9,6 +9,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:explain": "tsx scripts/explain-query-plans.ts",
     "db:studio": "prisma studio",
     "lint": "eslint src/",
     "format": "prettier --write src/",
