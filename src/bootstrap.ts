@@ -8,7 +8,12 @@ export function bootstrap() {
   const dir = import.meta.dirname ?? "";
   const isCompiled = dir.includes("$bunfs") || dir.includes("~BUN");
 
-  if (!isCompiled) return;
+  if (!isCompiled) {
+    // Prisma no carga .env en tiempo de ejecucion; usa la DB local como fallback.
+    const projectDir = dir ? dirname(dir) : process.cwd();
+    process.env["DATABASE_URL"] ||= `file:${join(projectDir, "prisma", "distribuidora.db")}`;
+    return;
+  }
 
   const execDir = dirname(process.execPath);
 

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { bootstrap } from "./bootstrap.js";
 bootstrap();
 
@@ -11,6 +12,17 @@ import { ventasRoutes } from "./routes/ventas.js";
 import { filtrosRoutes } from "./routes/filtros.js";
 
 export const prisma = new PrismaClient();
+
+const PUBLIC_ERROR_MESSAGES: Record<number, string> = {
+  400: "Solicitud inválida",
+  401: "No autorizado",
+  403: "Acceso denegado",
+  404: "Recurso no encontrado",
+  409: "Conflicto al procesar la solicitud",
+  413: "El archivo excede el tamaño máximo permitido",
+  422: "Los datos enviados no son válidos",
+  429: "Demasiadas solicitudes",
+};
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -29,9 +41,23 @@ export async function buildApp() {
   app.setErrorHandler((error, _req, reply) => {
     const err = error as Error & { statusCode?: number };
     app.log.error(err);
-    reply.status(err.statusCode ?? 500).send({
-      error: err.message ?? "Error interno del servidor",
-    });
+
+    const statusCode =
+      typeof err.statusCode === "number" &&
+      err.statusCode >= 400 &&
+      err.statusCode < 600
+        ? err.statusCode
+        : 500;
+    const message =
+      statusCode >= 500
+        ? "Error interno del servidor"
+        : (PUBLIC_ERROR_MESSAGES[statusCode] ?? "Solicitud inválida");
+
+    reply.status(statusCode).send({ error: message });
+  });
+
+  app.setNotFoundHandler((_req, reply) => {
+    reply.status(404).send({ error: "Recurso no encontrado" });
   });
 
   await app.register(uploadRoutes);

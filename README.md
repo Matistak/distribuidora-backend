@@ -18,7 +18,8 @@ SQLite como base de datos.
 
 ## Configuración
 
-Copiá `.env.example` a `.env`:
+Copiá `.env.example` a `.env` antes de ejecutar comandos de Prisma o si
+necesitás cambiar la configuración:
 
 ```bash
 cp .env.example .env
@@ -34,6 +35,9 @@ En desarrollo, la base está en `prisma/distribuidora.db`. En el binario
 empaquetado, `src/bootstrap.ts` copia la base semilla al directorio de datos de
 la aplicación y configura allí `DATABASE_URL`. La base de `prisma/` no debe
 considerarse el backup de producción.
+
+Si no existe `.env`, el backend usa automáticamente
+`prisma/distribuidora.db` como base SQLite local.
 
 ## Instalación
 
