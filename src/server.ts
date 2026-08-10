@@ -10,8 +10,20 @@ import { uploadRoutes } from "./routes/uploads.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { ventasRoutes } from "./routes/ventas.js";
 import { filtrosRoutes } from "./routes/filtros.js";
+import { configureSqlite } from "./services/sqlitePerformance.js";
 
 export const prisma = new PrismaClient();
+
+async function ensureImportSchema() {
+  try {
+    await prisma.$queryRaw`SELECT "filasErrores" FROM "Carga" LIMIT 1`;
+  } catch {
+    // Actualiza instalaciones existentes que fueron creadas antes del contador de errores.
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "Carga" ADD COLUMN "filasErrores" INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+}
 
 const PUBLIC_ERROR_MESSAGES: Record<number, string> = {
   400: "Solicitud inválida",
@@ -26,6 +38,9 @@ const PUBLIC_ERROR_MESSAGES: Record<number, string> = {
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
+
+  await configureSqlite(prisma);
+  await ensureImportSchema();
 
   const origins = process.env["CORS_ORIGIN"]?.split(",").map((s) => s.trim()).filter(Boolean) ?? ["*"];
   await app.register(cors, {

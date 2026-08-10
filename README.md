@@ -58,7 +58,7 @@ La carga de un Excel debe:
 - Insertar las filas dentro de una transacción.
 - Usar lotes para importar archivos grandes.
 - Evitar duplicados mediante la restricción única del modelo `Venta`.
-- Registrar en `Carga` las filas totales, nuevas y omitidas.
+- Registrar en `Carga` las filas totales, nuevas, omitidas y con errores.
 
 El volumen previsto de 25.000 filas mensuales no requiere una cola de trabajos.
 Antes de agregar optimizaciones, se debe probar con al menos 25.000, 300.000 y
@@ -117,6 +117,7 @@ aplicar el mismo rango de fechas que el dashboard.
 | `npm run build`   | Compilar TypeScript          |
 | `npm start`       | Iniciar desde build          |
 | `npm run db:push` | Sincronizar schema de Prisma |
+| `npm run db:explain` | Mostrar los planes de consulta de SQLite |
 
 ## Empaquetado con Tauri
 

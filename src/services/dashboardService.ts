@@ -23,23 +23,31 @@ type RankingRaw = {
   participacion: NumericValue;
 };
 
-function whereClausula(desde: string, hasta: string, f: Filtros): Prisma.Sql {
+function whereClausula(
+  desde: string,
+  hasta: string,
+  f: Filtros,
+  alias = "v",
+): Prisma.Sql {
   const conds: Prisma.Sql[] = [];
 
   if (desde) {
     conds.push(
-      Prisma.sql`v."fecha" >= CAST(strftime('%s', ${desde}) AS INTEGER) * 1000`,
+      Prisma.sql`${Prisma.raw(alias)}."fecha" >= CAST(strftime('%s', ${desde}) AS INTEGER) * 1000`,
     );
   }
   if (hasta) {
     conds.push(
-      Prisma.sql`v."fecha" < (CAST(strftime('%s', ${hasta}) AS INTEGER) + 86400) * 1000`,
+      Prisma.sql`${Prisma.raw(alias)}."fecha" < (CAST(strftime('%s', ${hasta}) AS INTEGER) + 86400) * 1000`,
     );
   }
-  if (f.vendedor) conds.push(Prisma.sql`v."vendedor" = ${f.vendedor}`);
-  if (f.canal) conds.push(Prisma.sql`v."canal" = ${f.canal}`);
-  if (f.ciudad) conds.push(Prisma.sql`v."ciudad" = ${f.ciudad}`);
-  if (f.zona) conds.push(Prisma.sql`v."zona" = ${f.zona}`);
+  if (f.vendedor)
+    conds.push(Prisma.sql`${Prisma.raw(alias)}."vendedor" = ${f.vendedor}`);
+  if (f.canal)
+    conds.push(Prisma.sql`${Prisma.raw(alias)}."canal" = ${f.canal}`);
+  if (f.ciudad)
+    conds.push(Prisma.sql`${Prisma.raw(alias)}."ciudad" = ${f.ciudad}`);
+  if (f.zona) conds.push(Prisma.sql`${Prisma.raw(alias)}."zona" = ${f.zona}`);
 
   if (conds.length === 0) return Prisma.sql`TRUE`;
   return Prisma.join(conds, " AND ");
@@ -63,6 +71,8 @@ export async function obtenerDashboard(
       productosDistintos: number | bigint;
       costoTotal: number | bigint;
       notasCredito: number | bigint;
+      periodoDesde: string | number | bigint | null;
+      periodoHasta: string | number | bigint | null;
     }>
   >(Prisma.sql`
     SELECT
@@ -73,7 +83,9 @@ export async function obtenerDashboard(
       CAST(COUNT(DISTINCT v."codCliente") AS INTEGER)                AS "clientesActivos",
       CAST(COUNT(DISTINCT v."codProducto") AS INTEGER)               AS "productosDistintos",
       CAST(COALESCE(SUM(v."costoVtaGua"), 0) AS REAL)                AS "costoTotal",
-      CAST(COUNT(DISTINCT CASE WHEN LOWER(v."tipoDoc") LIKE LOWER('%CREDITO%') THEN v."nroDoc" END) AS INTEGER) AS "notasCredito"
+      CAST(COUNT(DISTINCT CASE WHEN LOWER(v."tipoDoc") LIKE LOWER('%CREDITO%') THEN v."nroDoc" END) AS INTEGER) AS "notasCredito",
+      MIN(v."fecha") AS "periodoDesde",
+      MAX(v."fecha") AS "periodoHasta"
     FROM "Venta" v
     WHERE ${where}
   `);
@@ -95,6 +107,7 @@ export async function obtenerDashboard(
   const margenPorc = kpi.ventaNeta
     ? (kpi.ventaNeta - kpi.costoTotal) / kpi.ventaNeta
     : 0;
+  const totalVentaNeta = kpi.ventaNeta;
 
   const queryRaw = <T>(sql: Prisma.Sql) => prisma.$queryRaw<T>(sql);
 
@@ -106,7 +119,6 @@ export async function obtenerDashboard(
     ventasPorMarca,
     topClientes,
     topProductos,
-    periodoRaw,
   ] = await Promise.all([
     queryRaw<SerieRaw[]>(Prisma.sql`
       SELECT CAST(v."dia" AS TEXT) AS label, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor
@@ -116,54 +128,44 @@ export async function obtenerDashboard(
 
     queryRaw<RankingRaw[]>(Prisma.sql`
       SELECT v."vendedor" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
-             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."vendedor" ORDER BY valor DESC LIMIT 10
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
       SELECT v."ciudad" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
-             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."ciudad" ORDER BY valor DESC LIMIT 7
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
       SELECT v."canal" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
-             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."canal" ORDER BY valor DESC LIMIT 8
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
       SELECT v."marca" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
-             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."marca" ORDER BY valor DESC LIMIT 10
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
       SELECT v."razonSocial" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
-             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."razonSocial" ORDER BY valor DESC LIMIT 5
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
       SELECT v."producto" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
-             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF((SELECT SUM(v2."montoVtaNetaGua") FROM "Venta" v2 WHERE ${where}), 0) AS participacion
+             CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
       GROUP BY v."producto" ORDER BY valor DESC LIMIT 8
-    `),
-
-    queryRaw<
-      Array<{
-        desde: string | number | bigint | null;
-        hasta: string | number | bigint | null;
-      }>
-    >(Prisma.sql`
-      SELECT MIN(v."fecha") AS desde, MAX(v."fecha") AS hasta
-      FROM "Venta" v WHERE ${where}
     `),
   ]);
 
@@ -199,8 +201,8 @@ export async function obtenerDashboard(
     topClientes: ranking(topClientes),
     topProductos: ranking(topProductos),
     periodo: {
-      desde: toIsoDate(periodoRaw[0]?.desde),
-      hasta: toIsoDate(periodoRaw[0]?.hasta),
+      desde: toIsoDate(kpiRow?.periodoDesde),
+      hasta: toIsoDate(kpiRow?.periodoHasta),
     },
   };
 }

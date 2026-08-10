@@ -3,6 +3,9 @@ import type { VentaRow } from "../lib/types.js";
 import { prisma } from "../server.js";
 
 export async function ventasRoutes(app: FastifyInstance) {
+  const DEFAULT_PAGE_SIZE = 20;
+  const MAX_PAGE_SIZE = 100;
+
   /** GET /api/ventas — filas paginadas con filtros opcionales */
   app.get<{
     Querystring: {
@@ -16,10 +19,23 @@ export async function ventasRoutes(app: FastifyInstance) {
       zona?: string;
     };
   }>("/api/ventas", async (req, reply) => {
-    const page = Math.max(parseInt(req.query.page ?? "1", 10) || 1, 1);
+    const requestedPage = Number.parseInt(req.query.page ?? "1", 10);
+    const page =
+      Number.isSafeInteger(requestedPage) && requestedPage > 0
+        ? requestedPage
+        : 1;
+    const requestedPageSize = Number.parseInt(
+      req.query.pageSize ?? String(DEFAULT_PAGE_SIZE),
+      10,
+    );
     const pageSize = Math.min(
-      Math.max(parseInt(req.query.pageSize ?? "20", 10) || 20, 1),
-      100,
+      Math.max(
+        Number.isSafeInteger(requestedPageSize) && requestedPageSize > 0
+          ? requestedPageSize
+          : DEFAULT_PAGE_SIZE,
+        1,
+      ),
+      MAX_PAGE_SIZE,
     );
     const { desde, hasta, vendedor, canal, ciudad, zona } = req.query;
 
