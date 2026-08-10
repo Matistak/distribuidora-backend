@@ -1,10 +1,28 @@
 import { execFile } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { promisify } from "node:util";
 import {
   createCodexProcess,
   type CodexProcessHandle,
   type JsonRpcNotification,
 } from "./jsonrpc.js";
+import type {
+  CodexAgentMessageDeltaNotification,
+  CodexEvent,
+  CodexModel,
+  CodexModelListParams,
+  CodexThreadListParams,
+  CodexThreadListResult,
+  CodexThreadReadParams,
+  CodexThreadReadResult,
+  CodexThreadResumeParams,
+  CodexThreadResumeResult,
+  CodexThreadStartParams,
+  CodexThreadStartResult,
+  CodexTurnInterruptParams,
+  CodexTurnStartParams,
+  CodexTurnStartResult,
+} from "./codexProtocol.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -81,6 +99,7 @@ export class CodexService {
   private process: CodexProcessHandle | null = null;
   private initializePromise: Promise<InitializeResult> | null = null;
   private startPromise: Promise<CodexProcessHandle> | null = null;
+  private readonly emitter = new EventEmitter();
   private readonly command: string;
   private readonly extraArgs: string[];
   private readonly cwd?: string;
@@ -144,6 +163,91 @@ export class CodexService {
 
   private handleNotification(notification: JsonRpcNotification) {
     this.logger("info", `notificacion ${notification.method}`);
+    const event = decodeNotification(notification);
+    if (!event) return;
+    this.emitter.emit("event", event);
+    const threadId = threadIdOf(event);
+    if (threadId) this.emitter.emit(`thread:${threadId}`, event);
+  }
+
+  /**
+   * Suscribirse a todos los eventos de Codex ya decodificados.
+   * Devuelve una funcion para cancelar la suscripcion.
+   */
+  onEvent(listener: (event: CodexEvent) => void): () => void {
+    this.emitter.on("event", listener);
+    return () => this.emitter.off("event", listener);
+  }
+
+  /**
+   * Suscribirse a los eventos de un thread concreto. Los eventos llegan en
+   * tiempo real durante `turn/start` (Etapa 5).
+   */
+  onThreadEvent(threadId: string, listener: (event: CodexEvent) => void): () => void {
+    this.emitter.on(`thread:${threadId}`, listener);
+    return () => this.emitter.off(`thread:${threadId}`, listener);
+  }
+
+  private async rpc<T>(method: string, params: unknown): Promise<T> {
+    const proc = await this.ensureProcess();
+    await this.initialize();
+    return proc.request<T>(method, params);
+  }
+
+  // ------------------------------------------------------- Requests tipados
+
+  /** `model/list`: modelos habilitados para la cuenta (Etapa 3). */
+  async listModels(params: CodexModelListParams = {}): Promise<ReadonlyArray<CodexModel>> {
+    const result = await this.rpc<{ data: ReadonlyArray<CodexModel> }>("model/list", params);
+    return result.data;
+  }
+
+  /** Solo modelos visibles (los que `hidden === false`). */
+  async visibleModels(): Promise<ReadonlyArray<CodexModel>> {
+    const models = await this.listModels();
+    return models.filter((model) => !model.hidden);
+  }
+
+  /** Modelo por defecto: el marcado por Codex o el primer modelo visible. */
+  async defaultModel(): Promise<string | null> {
+    const visible = await this.visibleModels();
+    return visible.find((model) => model.isDefault)?.id ?? visible[0]?.id ?? null;
+  }
+
+  /** Valida que un modelo exista y este visible para la cuenta (Etapa 3). */
+  async validateModel(modelId: string): Promise<boolean> {
+    const visible = await this.visibleModels();
+    return visible.some((model) => model.id === modelId);
+  }
+
+  /** `thread/start`: crea una conversacion nueva (Etapa 4). */
+  async startThread(params: CodexThreadStartParams): Promise<CodexThreadStartResult> {
+    return this.rpc<CodexThreadStartResult>("thread/start", params);
+  }
+
+  /** `thread/resume`: continua una conversacion existente (Etapa 4). */
+  async resumeThread(params: CodexThreadResumeParams): Promise<CodexThreadResumeResult> {
+    return this.rpc<CodexThreadResumeResult>("thread/resume", params);
+  }
+
+  /** `thread/list`: historial de conversaciones del app-server (Etapa 4). */
+  async listThreads(params: CodexThreadListParams = {}): Promise<CodexThreadListResult> {
+    return this.rpc<CodexThreadListResult>("thread/list", params);
+  }
+
+  /** `thread/read`: lee el contenido completo de una conversacion (Etapa 4). */
+  async readThread(params: CodexThreadReadParams): Promise<CodexThreadReadResult> {
+    return this.rpc<CodexThreadReadResult>("thread/read", params);
+  }
+
+  /** `turn/start`: envia un mensaje y emite notificaciones durante el turno (Etapa 5). */
+  async startTurn(params: CodexTurnStartParams): Promise<CodexTurnStartResult> {
+    return this.rpc<CodexTurnStartResult>("turn/start", params);
+  }
+
+  /** `turn/interrupt`: cancela la generacion de un turno en curso (Etapa 5, opcional). */
+  async interruptTurn(params: CodexTurnInterruptParams): Promise<void> {
+    await this.rpc("turn/interrupt", params);
   }
 
   /**
@@ -248,4 +352,45 @@ export class CodexService {
     await this.close();
     await this.status();
   }
+}
+
+const NOTIFICATION_METHODS: ReadonlyArray<string> = [
+  "turn/started",
+  "turn/completed",
+  "item/agentMessage/delta",
+  "item/started",
+  "item/completed",
+];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/** Decodifica una notificacion JSON-RPC en un evento tipado, o `null` si no aplica. */
+function decodeNotification(notification: JsonRpcNotification): CodexEvent | null {
+  if (!NOTIFICATION_METHODS.includes(notification.method) || !isRecord(notification.params)) {
+    return null;
+  }
+  const params = notification.params as unknown as CodexEvent["params"];
+  const threadId =
+    typeof (params as { threadId?: unknown }).threadId === "string"
+      ? (params as { threadId: string }).threadId
+      : null;
+  if (notification.method !== "item/agentMessage/delta" && !threadId) {
+    return null;
+  }
+  switch (notification.method) {
+    case "turn/started":
+    case "turn/completed":
+    case "item/agentMessage/delta":
+    case "item/started":
+    case "item/completed":
+      return { method: notification.method, params } as CodexEvent;
+    default:
+      return null;
+  }
+}
+
+function threadIdOf(event: CodexEvent): string | null {
+  const params = event.params as { threadId?: unknown } | CodexAgentMessageDeltaNotification;
+  return typeof params.threadId === "string" ? params.threadId : null;
 }

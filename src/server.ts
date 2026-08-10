@@ -102,6 +102,7 @@ async function start() {
     console.log(`     GET    /api/ventas         — filas paginadas`);
     console.log(`     GET    /api/filtros        — opciones de filtro`);
     console.log(`     GET    /api/chat/status    — estado de Codex`);
+    console.log(`     GET    /api/chat/models    — modelos disponibles`);
     console.log(`     POST   /api/chat/restart   — reiniciar app-server`);
     console.log(`     GET    /health             — health check\n`);
   } catch (err) {
