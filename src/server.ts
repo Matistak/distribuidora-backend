@@ -10,6 +10,7 @@ import { uploadRoutes } from "./routes/uploads.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { ventasRoutes } from "./routes/ventas.js";
 import { filtrosRoutes } from "./routes/filtros.js";
+import { chatRoutes } from "./routes/chat.js";
 import { configureSqlite } from "./services/sqlitePerformance.js";
 
 export const prisma = new PrismaClient();
@@ -79,6 +80,7 @@ export async function buildApp() {
   await app.register(dashboardRoutes);
   await app.register(ventasRoutes);
   await app.register(filtrosRoutes);
+  await app.register(chatRoutes);
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -99,6 +101,8 @@ async function start() {
     console.log(`     GET    /api/dashboard      — KPIs + rankings`);
     console.log(`     GET    /api/ventas         — filas paginadas`);
     console.log(`     GET    /api/filtros        — opciones de filtro`);
+    console.log(`     GET    /api/chat/status    — estado de Codex`);
+    console.log(`     POST   /api/chat/restart   — reiniciar app-server`);
     console.log(`     GET    /health             — health check\n`);
   } catch (err) {
     app.log.error(err);
