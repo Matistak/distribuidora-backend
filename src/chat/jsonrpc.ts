@@ -15,6 +15,13 @@ export interface JsonRpcNotification {
   params?: unknown;
 }
 
+/** Request del app-server hacia nuestro cliente (aprobaciones, tool calls MCP, ...). */
+export interface JsonRpcClientRequest {
+  id: number;
+  method: string;
+  params?: unknown;
+}
+
 export interface JsonRpcErrorShape {
   code: number;
   message: string;
@@ -70,12 +77,18 @@ export interface CodexProcessHandle {
   request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T>;
   /** Envia una notificacion JSON-RPC (sin id, sin respuesta esperada). */
   notify(method: string, params?: unknown): Promise<void>;
+  /** Responde a un request del servidor (aprobaciones, tool calls MCP, ...). */
+  respond(id: number, result: unknown): Promise<void>;
   /** Cierra el proceso (SIGTERM, luego SIGKILL) y espera la salida. */
   close(): Promise<void>;
   /** `true` si el proceso termino de forma inesperada desde la ultima comprobacion. */
   checkHealth(): boolean;
   /** Suscribirse a notificaciones JSON-RPC. */
   onNotification(listener: (notification: JsonRpcNotification) => void): () => void;
+  /** Suscribirse a requests del servidor hacia el cliente (para responderles). */
+  onClientRequest(listener: (request: JsonRpcClientRequest) => void): () => void;
+  /** Suscribirse a la salida de stderr del proceso (logs del propio codex). */
+  onStderr(listener: (chunk: string) => void): () => void;
   /** Suscribirse a la terminacion del proceso. */
   onExit(listener: (code: number | null, signal: NodeJS.Signals | null) => void): () => void;
 }
@@ -102,6 +115,9 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
 
   const emitNotification = (notification: JsonRpcNotification) =>
     emitter.emit("notification", notification);
+
+  const emitClientRequest = (request: JsonRpcClientRequest) =>
+    emitter.emit("client-request", request);
 
   const emitExit = (code: number | null, signal: NodeJS.Signals | null) =>
     emitter.emit("exit", code, signal);
@@ -140,6 +156,13 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
     }
     if (typeof msg.method === "string" && msg.id === undefined) {
       emitNotification({ method: msg.method, params: msg.params });
+      return;
+    }
+    // Request del servidor hacia el cliente (p. ej. aprobaciones o
+    // mcpServer/tool/call): se expone para que quien use el transporte
+    // decida como responder.
+    if (typeof msg.method === "string" && typeof msg.id === "number") {
+      emitClientRequest({ method: msg.method, params: msg.params, id: msg.id });
     }
   };
 
@@ -245,6 +268,20 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
     });
   };
 
+  const respond = async (id: number, result: unknown) => {
+    await start();
+    if (!child) {
+      throw new CodexTransportError("El proceso no esta inicializado");
+    }
+    const payload = { id, result };
+    await new Promise<void>((resolve, reject) => {
+      child!.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
+        if (error) reject(new CodexTransportError(`No se pudo responder al request ${id}: ${error.message}`, error));
+        else resolve();
+      });
+    });
+  };
+
   const close = () => {
     if (!child) return Promise.resolve();
     manuallyClosed = true;
@@ -288,11 +325,20 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
     start,
     request,
     notify,
+    respond,
     close,
     checkHealth,
     onNotification: (listener) => {
       emitter.on("notification", listener);
       return () => emitter.off("notification", listener);
+    },
+    onClientRequest: (listener) => {
+      emitter.on("client-request", listener);
+      return () => emitter.off("client-request", listener);
+    },
+    onStderr: (listener) => {
+      emitter.on("stderr", listener);
+      return () => emitter.off("stderr", listener);
     },
     onExit: (listener) => {
       emitter.on("exit", listener);

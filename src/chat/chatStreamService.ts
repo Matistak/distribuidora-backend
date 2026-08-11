@@ -4,6 +4,7 @@ import {
   type CodexService,
 } from "./codexService.js";
 import { CodexTransportError, JsonRpcRequestError } from "./jsonrpc.js";
+import { autoApproveVentasToolCalls } from "./autoApproval.js";
 
 /**
  * Traduccion de un turno de `app-server` al contrato SSE de la aplicacion
@@ -84,6 +85,7 @@ export class ChatStreamService {
       // Primero el evento terminal y despues onDone: `onDone` cierra la
       // respuesta SSE, y escribir sobre un socket cerrado se pierde.
       if (started) send(event);
+      cleanup();
       emitDone();
     };
 
@@ -126,6 +128,15 @@ export class ChatStreamService {
       }
     });
 
+    // Etapa 6: las llamadas a herramientas del MCP de ventas requieren una
+    // aprobacion del cliente; como el chat no tiene flujo de aprobaciones y
+    // el servidor es de solo lectura, se responden automaticamente.
+    const offApproval = autoApproveVentasToolCalls(this.codex);
+    const cleanup = () => {
+      off();
+      offApproval();
+    };
+
     try {
       const { turn } = await this.codex.startTurn({
         threadId,
@@ -134,7 +145,7 @@ export class ChatStreamService {
       });
       turnId = turn.id;
     } catch (error) {
-      off();
+      cleanup();
       terminal = { event: "message.error", data: { message: turnStartErrorMessage(error) } };
       send(terminal);
       emitDone();

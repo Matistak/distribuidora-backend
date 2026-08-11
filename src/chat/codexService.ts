@@ -153,7 +153,15 @@ export class CodexService {
     proc.onExit((code, signal) => {
       this.logger("warn", `app-server termino (exit=${code}, signal=${signal})`);
     });
+    proc.onStderr((chunk) => {
+      this.logger("info", `app-server stderr: ${chunk.trim()}`);
+    });
     proc.onNotification((notification) => this.handleNotification(notification));
+    proc.onClientRequest((request) => {
+      // Requests del app-server hacia nosotros (aprobaciones, mcpServer/tool/call).
+      this.logger("info", `request del servidor ${request.method}`, request.params);
+      this.emitter.emit("client-request", request);
+    });
 
     await proc.start();
     this.logger("info", `app-server iniciado (pid=${proc.pid}, version=${version})`);
@@ -162,6 +170,21 @@ export class CodexService {
   }
 
   private handleNotification(notification: JsonRpcNotification) {
+    // Etapa 6: las notificaciones de MCP (startupStatus/updated, etc.) llevan
+    // el estado y los errores de conexion del servidor local de ventas.
+    if (notification.method.startsWith("mcpServer/")) {
+      this.logger("info", `notificacion ${notification.method}`, notification.params);
+    }
+    // Etapa 6 (diagnostico): los items de un turno indican si el modelo llama
+    // herramientas MCP (item/started + item/completed con type mcpToolCall).
+    if (notification.method === "item/started" || notification.method === "item/completed") {
+      const item = (notification.params as { item?: { type?: string; id?: string } })?.item;
+      this.logger(
+        "info",
+        `notificacion ${notification.method}`,
+        item ? { type: item.type, id: item.id } : undefined,
+      );
+    }
     this.logger("info", `notificacion ${notification.method}`);
     const event = decodeNotification(notification);
     if (!event) return;
@@ -186,6 +209,24 @@ export class CodexService {
   onThreadEvent(threadId: string, listener: (event: CodexEvent) => void): () => void {
     this.emitter.on(`thread:${threadId}`, listener);
     return () => this.emitter.off(`thread:${threadId}`, listener);
+  }
+
+  /**
+   * Suscribirse a requests del app-server hacia el cliente (aprobaciones,
+   * mcpServer/tool/call, ...). Etapa 6: el servidor puede delegar al cliente
+   * la ejecucion de herramientas MCP o pedirle aprobaciones.
+   */
+  onClientRequest(
+    listener: (request: { id: number; method: string; params?: unknown }) => void,
+  ): () => void {
+    this.emitter.on("client-request", listener);
+    return () => this.emitter.off("client-request", listener);
+  }
+
+  /** Responde a un request del app-server (por ejemplo una aprobacion). */
+  async respondToClientRequest(id: number, result: unknown): Promise<void> {
+    const proc = await this.ensureProcess();
+    await proc.respond(id, result);
   }
 
   private async rpc<T>(method: string, params: unknown, timeoutMs?: number): Promise<T> {

@@ -14,6 +14,7 @@ import {
   type ChatSseEvent,
   type ChatTurnControl,
 } from "../chat/chatStreamService.js";
+import { ventasMcpInfo, ventasMcpLaunchArgs } from "../mcp/ventasMcpConfig.js";
 
 /**
  * Rutas del chat:
@@ -68,6 +69,8 @@ const MENSAJE_MAX_LENGTH = 20_000;
 export async function chatRoutes(app: FastifyInstance) {
   const codex = new CodexService({
     command: process.env["CODEX_CLI_COMMAND"] ?? "codex",
+    // Etapa 6: registra el MCP de ventas local en app-server por stdio.
+    extraArgs: ventasMcpLaunchArgs(),
     logger: (level, message, extra) => {
       if (level === "info") app.log.info({ extra }, message);
       else if (level === "warn") app.log.warn({ extra }, message);
@@ -79,7 +82,7 @@ export async function chatRoutes(app: FastifyInstance) {
 
   app.get("/api/chat/status", async (_req, reply) => {
     const status = await codex.status();
-    return reply.send(status);
+    return reply.send({ ...status, mcp: ventasMcpInfo() });
   });
 
   app.get<{ Querystring: { model?: string } }>("/api/chat/models", async (req, reply) => {
