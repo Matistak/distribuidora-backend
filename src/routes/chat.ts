@@ -35,7 +35,9 @@ import { ventasMcpInfo, ventasMcpLaunchArgs } from "../mcp/ventasMcpConfig.js";
  * Etapa 4: conversaciones con metadatos locales en SQLite e historial de
  * mensajes provisto por `thread/read`.
  * Etapa 5: `POST .../messages` traduce `turn/start` + notificaciones de Codex
- * a un contrato SSE pequeno y estable (message.start/delta/completed/error).
+ * a un contrato SSE pequeno y estable (message.start/delta/tool_call/completed/error).
+ * Etapa 7: el historial incluye las consultas de herramientas (MCP de ventas)
+ * resumidas en cada mensaje del asistente.
  * Nunca se exponen credenciales ni tokens en las respuestas.
  */
 
@@ -175,8 +177,9 @@ export async function chatRoutes(app: FastifyInstance) {
 
   /**
    * Envia un mensaje a la conversacion y responde con un stream SSE
-   * (`message.start`, `message.delta`, `message.completed` o `message.error`).
-   * El `turnId` llega en `message.start` para que el frontend pueda cancelar.
+   * (`message.start`, `message.delta`, `message.tool_call`, `message.completed`
+   * o `message.error`). El `turnId` llega en `message.start` para que el
+   * frontend pueda cancelar.
    */
   app.post<{ Params: { id: string }; Body: { message?: string } }>(
     "/api/chat/conversations/:id/messages",

@@ -9,7 +9,8 @@ import { autoApproveVentasToolCalls } from "./autoApproval.js";
 /**
  * Traduccion de un turno de `app-server` al contrato SSE de la aplicacion
  * (Etapa 5). El frontend no conoce el protocolo de Codex: solo recibe
- * `message.start`, `message.delta`, `message.completed` y `message.error`.
+ * `message.start`, `message.delta`, `message.tool_call`, `message.completed`
+ * y `message.error`.
  *
  * Orquestacion:
  * 1. Suscribirse a los eventos del thread ANTES de enviar `turn/start` para
@@ -37,6 +38,10 @@ import { autoApproveVentasToolCalls } from "./autoApproval.js";
 export type ChatSseEvent =
   | { event: "message.start"; data: { turnId: string | null } }
   | { event: "message.delta"; data: { text: string } }
+  | {
+      event: "message.tool_call";
+      data: { server: string; tool: string };
+    }
   | { event: "message.completed"; data: { turnId: string } }
   | { event: "message.error"; data: { message: string } };
 
@@ -64,6 +69,8 @@ export class ChatStreamService {
     let started = false;
     let terminal: ChatSseEvent | null = null;
     const deltas: string[] = [];
+    // Tool calls que llegan antes del arranque del turno (igual que los deltas).
+    const toolCalls: ChatSseEvent[] = [];
 
     const emitDone = () => {
       if (started && terminal) onDone?.();
@@ -99,6 +106,19 @@ export class ChatStreamService {
           if (started) send({ event: "message.delta", data: { text: event.params.delta } });
           else deltas.push(event.params.delta);
           break;
+        case "item/started": {
+          // Etapa 7: las consultas a herramientas se muestran en vivo.
+          if (terminal) return;
+          const item = event.params.item;
+          if (item.type !== "mcpToolCall") return;
+          const toolCall: ChatSseEvent = {
+            event: "message.tool_call",
+            data: { server: item.server, tool: item.tool },
+          };
+          if (started) send(toolCall);
+          else toolCalls.push(toolCall);
+          break;
+        }
         case "error":
           setTerminal(
             { event: "message.error", data: { message: event.params.error.message } },
@@ -159,6 +179,11 @@ export class ChatStreamService {
       send({ event: "message.delta", data: { text: delta } });
     }
     deltas.length = 0;
+    for (const toolCall of toolCalls) {
+      if (terminal) break;
+      send(toolCall);
+    }
+    toolCalls.length = 0;
     // Si el turno ya termino mientras esperabamos el arranque (respuesta muy
     // rapida), emitir el evento terminal despues del start para conservar el
     // orden start -> (deltas) -> fin.

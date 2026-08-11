@@ -34,12 +34,25 @@ export interface ChatConversacionResumen {
   updatedAt: string;
 }
 
+/** Consulta a una herramienta (MCP de ventas) resumida para mostrar en la UI. */
+export interface ChatToolCall {
+  /** Nombre del servidor MCP (p. ej. `ventas`). */
+  server: string;
+  /** Nombre de la herramienta (p. ej. `resumen_ventas`). */
+  tool: string;
+  status: "inProgress" | "completed" | "failed";
+  /** Mensaje de error de la herramienta, si fallo. */
+  error?: string | null;
+}
+
 export interface ChatMensaje {
   id: string;
   role: "user" | "assistant";
   text: string;
   /** Timestamp en ms del turno al que pertenece el item, si se conoce. */
   createdAt?: number;
+  /** Consultas a herramientas del turno, en orden de ejecucion (Etapa 7). */
+  toolCalls?: ChatToolCall[];
 }
 
 export interface ChatConversacionDetalle {
@@ -65,10 +78,15 @@ const toSummary = (row: {
   updatedAt: row.updatedAt.toISOString(),
 });
 
-/** Convierte los items de un turno de Codex en mensajes de la aplicacion. */
+/**
+ * Convierte los items de un turno de Codex en mensajes de la aplicacion.
+ * Las tool calls del MCP de ventas se adjuntan a la respuesta del asistente
+ * del mismo turno como resumen (nombre de la herramienta y estado).
+ */
 function turnToMessages(turn: CodexTurn): ChatMensaje[] {
   const createdAt = typeof turn.startedAt === "number" ? turn.startedAt * 1000 : undefined;
   const messages: ChatMensaje[] = [];
+
   for (const item of turn.items ?? []) {
     if (item.type === "userMessage") {
       const text = item.content
@@ -79,7 +97,29 @@ function turnToMessages(turn: CodexTurn): ChatMensaje[] {
       if (text) messages.push({ id: item.id, role: "user", text, createdAt });
     } else if (item.type === "agentMessage") {
       const text = item.text.trim();
-      if (text) messages.push({ id: item.id, role: "assistant", text, createdAt });
+      if (!text) continue;
+      // Si el asistente ya abrio la burbuja con tool calls pero sin texto
+      // (la consulta llego antes que la respuesta), completa esa burbuja.
+      const ultimo = messages.at(-1);
+      if (ultimo && ultimo.role === "assistant" && ultimo.text === "") {
+        ultimo.id = item.id;
+        ultimo.text = text;
+      } else {
+        messages.push({ id: item.id, role: "assistant", text, createdAt });
+      }
+    } else if (item.type === "mcpToolCall") {
+      const toolCall: ChatToolCall = {
+        server: item.server,
+        tool: item.tool,
+        status: item.status ?? "completed",
+        error: item.error?.message ?? null,
+      };
+      let ultimo = messages.at(-1);
+      if (!ultimo || ultimo.role !== "assistant") {
+        ultimo = { id: `tool-${item.id}`, role: "assistant", text: "", createdAt };
+        messages.push(ultimo);
+      }
+      (ultimo.toolCalls ??= []).push(toolCall);
     }
   }
   return messages;

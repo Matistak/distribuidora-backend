@@ -110,8 +110,8 @@ export interface CodexUserInput {
 
 /**
  * Items de un thread que la aplicacion muestra como mensajes (Etapa 4).
- * `thread/read` puede devolver otros tipos (reasoning, mcpToolCall, ...) que
- * la app ignora por ahora.
+ * `thread/read` puede devolver otros tipos (reasoning, ...) que la app ignora
+ * por ahora.
  */
 export type CodexThreadItem =
   | {
@@ -123,6 +123,14 @@ export type CodexThreadItem =
       type: "agentMessage";
       id: string;
       text: string;
+    }
+  | {
+      type: "mcpToolCall";
+      id: string;
+      server: string;
+      tool: string;
+      status?: "inProgress" | "completed" | "failed" | null;
+      error?: { message?: string } | null;
     };
 
 export interface CodexTurnStartParams {
