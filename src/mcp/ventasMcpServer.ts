@@ -11,6 +11,7 @@ import {
   validarRanking,
   ventasPorPeriodo,
 } from "../services/ventasConsultas.js";
+import { isPackaged, resolvePrismaEnv } from "../lib/appPaths.js";
 import { startMcpServer, type McpToolDefinition } from "./mcpServer.js";
 
 /**
@@ -21,11 +22,15 @@ import { startMcpServer, type McpToolDefinition } from "./mcpServer.js";
  * datos mas alla de los agregados pedidos y no toca credenciales de Codex.
  */
 
-// En desarrollo (tsx) el directorio es src/mcp; compilado, dist/mcp. En ambos
-// casos la DB local vive en <raiz>/prisma/distribuidora.db.
-const RAIZ = dirname(dirname(import.meta.dirname));
-if (!process.env["DATABASE_URL"]) {
-  const dbPath = join(RAIZ, "prisma", "distribuidora.db");
+if (isPackaged()) {
+  // App empaquetada: la DB vive en el directorio de datos de la aplicacion y
+  // el engine de Prisma se busca junto al ejecutable (Etapa 8).
+  resolvePrismaEnv();
+} else if (!process.env["DATABASE_URL"]) {
+  // En desarrollo (tsx) el directorio es src/mcp; compilado, dist/mcp. En
+  // ambos casos la DB local vive en <raiz>/prisma/distribuidora.db.
+  const raiz = dirname(dirname(import.meta.dirname));
+  const dbPath = join(raiz, "prisma", "distribuidora.db");
   process.env["DATABASE_URL"] = `file:${dbPath}`;
   if (!existsSync(dbPath)) {
     console.warn(`[mcp-ventas] No se encontro la DB en ${dbPath}; Prisma creara una vacia.`);

@@ -24,8 +24,9 @@ import { ventasMcpInfo, ventasMcpLaunchArgs } from "../mcp/ventasMcpConfig.js";
  * POST /api/chat/restart                 — cierra y reinicia app-server de forma controlada
  * GET  /api/chat/conversations           — historial local de conversaciones
  * POST /api/chat/conversations           — crea una conversacion (thread/start + metadatos)
- * GET  /api/chat/conversations/:id       — metadatos + mensajes desde el historial de Codex
- * POST /api/chat/conversations/:id/resume — reanuda el thread de Codex para continuarlo
+ *  GET  /api/chat/conversations/:id       — metadatos + mensajes desde el historial de Codex
+ *  DELETE /api/chat/conversations/:id     — borra la conversacion (thread/delete + local)
+ *  POST /api/chat/conversations/:id/resume — reanuda el thread de Codex para continuarlo
  * POST /api/chat/conversations/:id/messages — envia un mensaje y responde por SSE (Etapa 5)
  * POST /api/chat/conversations/:id/cancel — interrumpe un turno en curso (turn/interrupt)
  *
@@ -68,10 +69,21 @@ const TURNO_TIMEOUT_MS = 10 * 60 * 1000;
 /** Longitud maxima del mensaje que el usuario puede enviar. */
 const MENSAJE_MAX_LENGTH = 20_000;
 
+/** CORS no se aplica despues de `reply.hijack()`, asi que se replica para SSE. */
+function sseCorsHeaders(origin: string | undefined): Record<string, string> {
+  const allowed =
+    process.env["CORS_ORIGIN"]?.split(",").map((value) => value.trim()).filter(Boolean) ?? ["*"];
+  if (!origin || (!allowed.includes("*") && !allowed.includes(origin))) return {};
+  return {
+    "Access-Control-Allow-Origin": allowed.includes("*") ? "*" : origin,
+    ...(allowed.includes("*") ? {} : { Vary: "Origin" }),
+  };
+}
+
 export async function chatRoutes(app: FastifyInstance) {
   const codex = new CodexService({
-    command: process.env["CODEX_CLI_COMMAND"] ?? "codex",
-    // Etapa 6: registra el MCP de ventas local en app-server por stdio.
+    // Etapa 8: la resolucion del comando es cross-platform (PATH, Homebrew,
+    // npm/scoop en Windows); `CODEX_CLI_COMMAND` sigue siendo un override.
     extraArgs: ventasMcpLaunchArgs(),
     logger: (level, message, extra) => {
       if (level === "info") app.log.info({ extra }, message);
@@ -135,6 +147,24 @@ export async function chatRoutes(app: FastifyInstance) {
       }
     },
   );
+
+  app.delete<{ Params: { id: string } }>("/api/chat/conversations/:id", async (req, reply) => {
+    const id = idParam(req.params.id);
+    if (id === null) {
+      reply.status(404).send({ error: "Conversación no encontrada." });
+      return;
+    }
+    try {
+      const conversation = await conversations.remove(id);
+      if (!conversation) {
+        reply.status(404).send({ error: "Conversación no encontrada." });
+        return;
+      }
+      return reply.send({ deleted: true });
+    } catch (error) {
+      sendCodexError(reply, error);
+    }
+  });
 
   app.get<{ Params: { id: string } }>("/api/chat/conversations/:id", async (req, reply) => {
     const id = idParam(req.params.id);
@@ -221,6 +251,7 @@ export async function chatRoutes(app: FastifyInstance) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        ...sseCorsHeaders(req.headers.origin),
       });
 
       const send = (event: ChatSseEvent) => {

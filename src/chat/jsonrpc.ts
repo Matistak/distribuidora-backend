@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile } from "node:child_process";
 import readline from "node:readline";
 import { EventEmitter } from "node:events";
-
 /**
  * Cliente JSON-RPC minimo para `codex app-server` sobre stdio (JSONL).
  *
@@ -56,6 +56,8 @@ interface PendingRequest {
 export interface CodexProcessOptions {
   /** Comando para localizar el binario (por defecto `codex` en PATH). */
   command?: string;
+  /** Argumentos fijos que preceden a `app-server` (p. ej. `node cli.js`, Etapa 8). */
+  prefixArgs?: string[];
   /** Argumentos extra pasados a `codex app-server` (por ejemplo `--config`). */
   extraArgs?: string[];
   /** Variables de entorno para el proceso (se fusionan con process.env). */
@@ -96,6 +98,7 @@ export interface CodexProcessHandle {
 export function createCodexProcess(options: CodexProcessOptions = {}): CodexProcessHandle {
   const {
     command = "codex",
+    prefixArgs = [],
     extraArgs = [],
     env = {},
     cwd,
@@ -170,7 +173,7 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
     if (startPromise) return startPromise;
     startPromise = new Promise<void>((resolve, reject) => {
       try {
-        child = spawn(command, ["app-server", ...extraArgs], {
+        child = spawn(command, [...prefixArgs, "app-server", ...extraArgs], {
           stdio: ["pipe", "pipe", "pipe"],
           env: { ...process.env, ...env },
           cwd,
@@ -289,6 +292,14 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
       const proc = child!;
       const finish = () => resolve();
       proc.once("exit", finish);
+      if (process.platform === "win32") {
+        // En Windows el SIGTERM no es un mecanismo de cierre real; termina el
+        // arbol del proceso con taskkill para no dejar huerfanos (Etapa 8).
+        killTreeWindows(proc.pid);
+        const safety = setTimeout(finish, killTimeoutMs + 1_000);
+        proc.once("exit", () => clearTimeout(safety));
+        return;
+      }
       proc.kill("SIGTERM");
       const force = setTimeout(() => {
         try {
@@ -345,4 +356,21 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
       return () => emitter.off("exit", listener);
     },
   };
+}
+
+/** Termina el arbol de procesos de un pid en Windows (evita huerfanos). */
+function killTreeWindows(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    execFile(
+      "taskkill",
+      ["/pid", String(pid), "/T", "/F"],
+      { windowsHide: true },
+      () => {
+        // El error es esperable si el proceso ya termino; se ignora.
+      },
+    );
+  } catch {
+    // taskkill no existe o fallo; el proceso se cerrara solo al terminar la app.
+  }
 }

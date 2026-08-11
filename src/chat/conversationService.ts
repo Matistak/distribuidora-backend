@@ -15,6 +15,15 @@ import type { CodexThread, CodexTurn } from "./codexProtocol.js";
 /** Titulo aplicado a una conversacion nueva cuando el usuario no indica uno. */
 export const TITULO_POR_DEFECTO = "Nueva conversación";
 
+/** Alcance del asistente aplicado a cada conversación nueva. */
+export const INSTRUCCIONES_BASE_CHAT = [
+  "Sos un asistente de análisis de ventas de una distribuidora.",
+  "Solo respondé preguntas que puedan resolverse utilizando las herramientas de ventas y los datos de la base local.",
+  "Si la consulta no está relacionada con ventas, productos, vendedores, clientes, períodos, ciudades, canales o métricas comerciales, indicá amablemente que solo podés responder consultas sobre los datos de ventas.",
+  "No realices búsquedas en internet ni utilices fuentes externas.",
+  "No inventes información ni cifras.",
+].join(" ");
+
 /** Longitud maxima del titulo derivado del primer mensaje del thread. */
 const TITULO_MAX_LENGTH = 80;
 
@@ -156,6 +165,7 @@ export class ConversationService {
     const { thread } = await this.codex.startThread({
       model: input.model,
       sandbox: "read-only",
+      baseInstructions: INSTRUCCIONES_BASE_CHAT,
     });
 
     const title = input.title?.trim() || thread.name?.trim() || TITULO_POR_DEFECTO;
@@ -166,6 +176,26 @@ export class ConversationService {
         selectedModel: input.model,
       },
     });
+    return toSummary(row);
+  }
+
+  /**
+   * Borra una conversacion: elimina el thread en Codex (`thread/delete`) y
+   * despues los metadatos locales. Devuelve `null` si el id local no existe.
+   */
+  async remove(id: number): Promise<ChatConversacionResumen | null> {
+    const row = await this.db.chatConversation.findUnique({ where: { id } });
+    if (!row) return null;
+
+    try {
+      await this.codex.deleteThread({ threadId: row.codexThreadId });
+    } catch (error) {
+      // Si el thread ya no existe en Codex (por ejemplo, borrado desde la
+      // CLI), igual se limpia el registro local.
+      if (!(error instanceof JsonRpcRequestError && error.code === -32600)) throw error;
+    }
+
+    await this.db.chatConversation.delete({ where: { id } });
     return toSummary(row);
   }
 

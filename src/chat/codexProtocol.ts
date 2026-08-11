@@ -66,6 +66,10 @@ export interface CodexThreadReadParams {
   includeTurns?: boolean | null;
 }
 
+export interface CodexThreadDeleteParams {
+  threadId: string;
+}
+
 export interface CodexThreadSummary {
   id: string;
   name?: string | null;

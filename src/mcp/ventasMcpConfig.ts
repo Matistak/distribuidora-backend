@@ -1,15 +1,16 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isPackaged } from "../lib/appPaths.js";
 
 /**
- * Configuracion del MCP de ventas para `codex app-server` (Etapa 6).
+ * Configuracion del MCP de ventas para `codex app-server` (Etapa 6 y 8).
  *
  * `app-server` lee su configuracion de `~/.codex/config.toml` y admite
  * sobrescribir valores por llave con `-c key=value` (el valor se parsea como
  * TOML). Con eso se registra el servidor MCP local sin tocar el config del
  * usuario:
  *
- *   mcp_servers.ventas.command = "<node>"
+ *   mcp_servers.ventas.command = "<node|binario>"
  *   mcp_servers.ventas.args = ["<entrypoint>"]
  *   mcp_servers.ventas.default_tools_approval_mode = "auto"
  *   mcp_servers.ventas.tool_timeout_sec = 45
@@ -19,9 +20,12 @@ import { dirname, join } from "node:path";
  *
  * El comando se resuelve asi:
  * 1. `VENTAS_MCP_CMD` + `VENTAS_MCP_ARGS` (JSON) si el usuario los define.
- * 2. Si existe `dist/mcp/ventasMcpServer.js` (backend compilado), se usa
- *    `node` con esa entrada.
- * 3. En desarrollo se usa el node actual con `--import tsx` sobre la entrada
+ * 2. App empaquetada (Etapa 8): el binario `distribuidora-ventas-mcp`
+ *    compilado con bun, que Tauri coloca junto al sidecar principal
+ *    (`externalBin`). No depende de Node: funciona en Windows y macOS.
+ * 3. Si existe `dist/mcp/ventasMcpServer.js` (backend compilado en
+ *    desarrollo), se usa `node` con esa entrada.
+ * 4. En desarrollo se usa el node actual con `--import tsx` sobre la entrada
  *    TypeScript (tsx esta en las dependencias del backend).
  */
 
@@ -29,6 +33,11 @@ export interface VentasMcpConfig {
   command: string;
   args: string[];
   cwd?: string;
+}
+
+/** Nombre del binario MCP empaquetado (mismo esquema que el sidecar). */
+export function ventasMcpBinaryName(): string {
+  return process.platform === "win32" ? "distribuidora-ventas-mcp.exe" : "distribuidora-ventas-mcp";
 }
 
 /** Raiz del backend tanto desde `src/` como desde `dist/`. */
@@ -53,6 +62,18 @@ export function resolveVentasMcpConfig(): VentasMcpConfig {
       }
     }
     return { command: overrideCommand, args: overrideArgs };
+  }
+
+  if (isPackaged()) {
+    // Etapa 8: binario MCP junto al sidecar (Tauri externalBin).
+    const binario = join(dirname(process.execPath), ventasMcpBinaryName());
+    if (existsSync(binario)) {
+      return { command: binario, args: [] };
+    }
+    console.warn(
+      `[mcp-ventas] No se encontro ${binario}; el MCP no estara disponible en el chat.`,
+    );
+    return { command: binario, args: [] };
   }
 
   const compilado = join(raiz, "dist", "mcp", "ventasMcpServer.js");

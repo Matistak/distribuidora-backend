@@ -6,11 +6,17 @@ import {
   type CodexProcessHandle,
   type JsonRpcNotification,
 } from "./jsonrpc.js";
+import {
+  codexHomeInfo,
+  resolveCodexCommand,
+  type ResolvedCodex,
+} from "./codexResolver.js";
 import type {
   CodexAgentMessageDeltaNotification,
   CodexEvent,
   CodexModel,
   CodexModelListParams,
+  CodexThreadDeleteParams,
   CodexThreadListParams,
   CodexThreadListResult,
   CodexThreadReadParams,
@@ -26,6 +32,9 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+const MODELO_POR_DEFECTO = "gpt-5.4-mini";
+const MODELO_EXCLUIDO = "gpt-5.6-terra";
+
 export interface CodexAccount {
   type: "chatgpt" | "apiKey" | "amazonBedrock" | "unknown";
   email?: string | null;
@@ -39,6 +48,12 @@ export interface CodexStatus {
   account: CodexAccount | null;
   authenticated: boolean;
   error?: string;
+  /** Comando resuelto para ejecutar codex (Etapa 8). */
+  codexCommand?: string | null;
+  /** De donde se resolvio el comando (env, path, known, shim). */
+  codexSource?: string | null;
+  /** Directorio de configuracion de Codex y estado de su auth (Etapa 8). */
+  codexHome?: { path: string; fromEnv: boolean; authExists: boolean };
 }
 
 export interface CodexServiceOptions {
@@ -65,7 +80,7 @@ const log = (level: "info" | "warn" | "error", message: string, extra?: unknown)
 export class CodexNotInstalledError extends Error {
   constructor(command: string) {
     super(
-      `Codex CLI no encontrado. Instalalo con \`npm install -g @openai/codex\` o \`brew install codex\` y vuelve a intentarlo.`,
+      `Codex CLI no encontrado (se busco "${command}"). Instalalo con \`npm install -g @openai/codex\` o \`brew install codex\` y vuelve a intentarlo.`,
     );
     this.name = "CodexNotInstalledError";
   }
@@ -100,27 +115,44 @@ export class CodexService {
   private initializePromise: Promise<InitializeResult> | null = null;
   private startPromise: Promise<CodexProcessHandle> | null = null;
   private readonly emitter = new EventEmitter();
+  private readonly resolved: ResolvedCodex | null;
   private readonly command: string;
+  private readonly prefixArgs: string[];
   private readonly extraArgs: string[];
   private readonly cwd?: string;
   private readonly env?: NodeJS.ProcessEnv;
   private readonly logger: (level: "info" | "warn" | "error", message: string, extra?: unknown) => void;
 
   constructor(options: CodexServiceOptions = {}) {
-    this.command = options.command ?? "codex";
+    // Etapa 8: resolucion cross-platform (PATH, Homebrew, npm/scoop en
+    // Windows, shim .cmd traducido a node). `options.command` o
+    // `CODEX_CLI_COMMAND` son overrides explicitos.
+    this.resolved = resolveCodexCommand(options.command);
+    this.command = this.resolved?.command ?? options.command ?? "codex";
+    this.prefixArgs = this.resolved?.prefixArgs ?? [];
     this.extraArgs = options.extraArgs ?? [];
     this.cwd = options.cwd;
     this.env = options.env;
     this.logger = options.logger ?? log;
   }
 
+  /** Comando resuelto y de donde salio (para logs y status). */
+  resolvedInfo(): { command: string | null; source: string | null } | null {
+    if (!this.resolved) return null;
+    return { command: this.resolved.display, source: this.resolved.source };
+  }
+
   /** Detecta si el binario de codex existe y devuelve su version. */
   async detect(): Promise<{ installed: boolean; version?: string }> {
     try {
-      const { stdout } = await execFileAsync(this.command, ["--version"], {
-        timeout: 10_000,
-        env: { ...process.env, ...this.env },
-      });
+      const { stdout } = await execFileAsync(
+        this.command,
+        [...this.prefixArgs, "--version"],
+        {
+          timeout: 10_000,
+          env: { ...process.env, ...this.env },
+        },
+      );
       return { installed: true, version: stdout.trim() };
     } catch {
       return { installed: false };
@@ -145,6 +177,7 @@ export class CodexService {
 
     const proc = createCodexProcess({
       command: this.command,
+      prefixArgs: this.prefixArgs,
       extraArgs: this.extraArgs,
       cwd: this.cwd,
       env: this.env,
@@ -243,16 +276,21 @@ export class CodexService {
     return result.data;
   }
 
-  /** Solo modelos visibles (los que `hidden === false`). */
+  /** Modelos visibles para la aplicacion, excluyendo Terra. */
   async visibleModels(): Promise<ReadonlyArray<CodexModel>> {
     const models = await this.listModels();
-    return models.filter((model) => !model.hidden);
+    return models.filter((model) => !model.hidden && model.id !== MODELO_EXCLUIDO);
   }
 
-  /** Modelo por defecto: el marcado por Codex o el primer modelo visible. */
+  /** Modelo por defecto: 5.4 mini, o el primero si no esta disponible. */
   async defaultModel(): Promise<string | null> {
     const visible = await this.visibleModels();
-    return visible.find((model) => model.isDefault)?.id ?? visible[0]?.id ?? null;
+    return (
+      visible.find((model) => model.id === MODELO_POR_DEFECTO)?.id ??
+      visible.find((model) => model.isDefault)?.id ??
+      visible[0]?.id ??
+      null
+    );
   }
 
   /** Valida que un modelo exista y este visible para la cuenta (Etapa 3). */
@@ -279,6 +317,11 @@ export class CodexService {
   /** `thread/read`: lee el contenido completo de una conversacion (Etapa 4). */
   async readThread(params: CodexThreadReadParams): Promise<CodexThreadReadResult> {
     return this.rpc<CodexThreadReadResult>("thread/read", params);
+  }
+
+  /** `thread/delete`: borra de forma definitiva un thread y sus descendientes. */
+  async deleteThread(params: CodexThreadDeleteParams): Promise<void> {
+    await this.rpc<Record<string, never>>("thread/delete", params);
   }
 
   /** `turn/start`: envia un mensaje y emite notificaciones durante el turno (Etapa 5). */
@@ -352,7 +395,11 @@ export class CodexService {
       running: false,
       account: null,
       authenticated: false,
+      codexHome: codexHomeInfo(),
     };
+    const resolved = this.resolvedInfo();
+    base.codexCommand = resolved?.command ?? null;
+    base.codexSource = resolved?.source ?? null;
 
     const detected = await this.detect();
     if (!detected.installed) {
