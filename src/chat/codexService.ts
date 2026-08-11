@@ -188,10 +188,10 @@ export class CodexService {
     return () => this.emitter.off(`thread:${threadId}`, listener);
   }
 
-  private async rpc<T>(method: string, params: unknown): Promise<T> {
+  private async rpc<T>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
     const proc = await this.ensureProcess();
     await this.initialize();
-    return proc.request<T>(method, params);
+    return proc.request<T>(method, params, timeoutMs);
   }
 
   // ------------------------------------------------------- Requests tipados
@@ -241,8 +241,11 @@ export class CodexService {
   }
 
   /** `turn/start`: envia un mensaje y emite notificaciones durante el turno (Etapa 5). */
-  async startTurn(params: CodexTurnStartParams): Promise<CodexTurnStartResult> {
-    return this.rpc<CodexTurnStartResult>("turn/start", params);
+  async startTurn(
+    params: CodexTurnStartParams,
+    timeoutMs = TURN_START_TIMEOUT_MS,
+  ): Promise<CodexTurnStartResult> {
+    return this.rpc<CodexTurnStartResult>("turn/start", params, timeoutMs);
   }
 
   /** `turn/interrupt`: cancela la generacion de un turno en curso (Etapa 5, opcional). */
@@ -360,7 +363,11 @@ const NOTIFICATION_METHODS: ReadonlyArray<string> = [
   "item/agentMessage/delta",
   "item/started",
   "item/completed",
+  "error",
 ];
+
+/** Timeout por defecto para `turn/start` (la respuesta llega cuando el turno arranca). */
+const TURN_START_TIMEOUT_MS = 10 * 60 * 1000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -375,7 +382,7 @@ function decodeNotification(notification: JsonRpcNotification): CodexEvent | nul
     typeof (params as { threadId?: unknown }).threadId === "string"
       ? (params as { threadId: string }).threadId
       : null;
-  if (notification.method !== "item/agentMessage/delta" && !threadId) {
+  if (!threadId) {
     return null;
   }
   switch (notification.method) {
@@ -384,6 +391,7 @@ function decodeNotification(notification: JsonRpcNotification): CodexEvent | nul
     case "item/agentMessage/delta":
     case "item/started":
     case "item/completed":
+    case "error":
       return { method: notification.method, params } as CodexEvent;
     default:
       return null;

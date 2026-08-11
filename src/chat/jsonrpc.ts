@@ -67,7 +67,7 @@ export interface CodexProcessHandle {
   /** Inicia el proceso y espera la primera lectura de stdout. */
   start(): Promise<void>;
   /** Envia un request JSON-RPC y resuelve con `result`. */
-  request<T = unknown>(method: string, params?: unknown): Promise<T>;
+  request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T>;
   /** Envia una notificacion JSON-RPC (sin id, sin respuesta esperada). */
   notify(method: string, params?: unknown): Promise<void>;
   /** Cierra el proceso (SIGTERM, luego SIGKILL) y espera la salida. */
@@ -195,7 +195,11 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
     return startPromise;
   };
 
-  const request = async <T = unknown>(method: string, params?: unknown): Promise<T> => {
+  const request = async <T = unknown>(
+    method: string,
+    params?: unknown,
+    timeoutMs = requestTimeoutMs,
+  ): Promise<T> => {
     await start();
     const id = nextId++;
     const payload = params === undefined ? { method, id } : { method, id, params };
@@ -204,7 +208,7 @@ export function createCodexProcess(options: CodexProcessOptions = {}): CodexProc
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new CodexTransportError(`Timeout esperando respuesta de \`${method}\``));
-      }, requestTimeoutMs);
+      }, timeoutMs);
       pending.set(id, {
         resolve: (result) => resolve(result as T),
         reject,

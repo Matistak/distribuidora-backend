@@ -104,6 +104,12 @@ async function start() {
     console.log(`     GET    /api/chat/status    — estado de Codex`);
     console.log(`     GET    /api/chat/models    — modelos disponibles`);
     console.log(`     POST   /api/chat/restart   — reiniciar app-server`);
+    console.log(`     GET    /api/chat/conversations        — historial de conversaciones`);
+    console.log(`     POST   /api/chat/conversations        — nueva conversación`);
+    console.log(`     GET    /api/chat/conversations/:id    — mensajes de una conversación`);
+    console.log(`     POST   /api/chat/conversations/:id/resume — reanudar thread`);
+    console.log(`     POST   /api/chat/conversations/:id/messages — enviar mensaje (SSE)`);
+    console.log(`     POST   /api/chat/conversations/:id/cancel — interrumpir turno`);
     console.log(`     GET    /health             — health check\n`);
   } catch (err) {
     app.log.error(err);

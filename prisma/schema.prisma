@@ -78,3 +78,12 @@ model Carga {
 
   ventas Venta[]
 }
+
+model ChatConversation {
+  id            Int      @id @default(autoincrement())
+  codexThreadId String   @unique
+  title         String
+  selectedModel String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

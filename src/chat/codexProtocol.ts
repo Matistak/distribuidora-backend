@@ -108,6 +108,23 @@ export interface CodexUserInput {
   text: string;
 }
 
+/**
+ * Items de un thread que la aplicacion muestra como mensajes (Etapa 4).
+ * `thread/read` puede devolver otros tipos (reasoning, mcpToolCall, ...) que
+ * la app ignora por ahora.
+ */
+export type CodexThreadItem =
+  | {
+      type: "userMessage";
+      id: string;
+      content: ReadonlyArray<CodexUserInput>;
+    }
+  | {
+      type: "agentMessage";
+      id: string;
+      text: string;
+    };
+
 export interface CodexTurnStartParams {
   threadId: string;
   input: ReadonlyArray<CodexUserInput>;
@@ -115,10 +132,17 @@ export interface CodexTurnStartParams {
   cwd?: string | null;
 }
 
+/**
+ * Estado de un turno. Ojo: a diferencia de `Thread.status` (objeto
+ * `{ type }`), `Turn.status` es un string literal directo.
+ */
+export type CodexTurnStatusType = "completed" | "interrupted" | "failed" | "inProgress";
+
 export interface CodexTurn {
   id: string;
-  status: { type: string };
-  items?: ReadonlyArray<unknown>;
+  status: CodexTurnStatusType;
+  items?: ReadonlyArray<CodexThreadItem>;
+  startedAt?: number | null;
 }
 
 export interface CodexTurnStartResult {
@@ -151,18 +175,34 @@ export interface CodexAgentMessageDeltaNotification {
   delta: string;
 }
 
+/**
+ * `item/started` y `item/completed` llevan el item completo en `item` (no un
+ * `itemId`): verificado contra el schema generado del app-server.
+ */
 export interface CodexItemStartedNotification {
   threadId: string;
   turnId: string;
-  itemId: string;
-  kind?: string;
+  item: CodexThreadItem;
 }
 
 export interface CodexItemCompletedNotification {
   threadId: string;
   turnId: string;
-  itemId: string;
-  kind?: string;
+  item: CodexThreadItem;
+}
+
+/**
+ * `error`: error de un turno emitido por el proceso (rate limits, fallos de
+ * herramientas, ...). `willRetry` indica si Codex reintentara el turno solo.
+ */
+export interface CodexErrorNotification {
+  threadId: string;
+  turnId: string;
+  error: {
+    message: string;
+    additionalDetails?: string | null;
+  };
+  willRetry: boolean;
 }
 
 /** Nombre y shape de cada notificacion que la aplicacion consume. */
@@ -172,6 +212,7 @@ export interface CodexNotificationMap {
   "item/agentMessage/delta": CodexAgentMessageDeltaNotification;
   "item/started": CodexItemStartedNotification;
   "item/completed": CodexItemCompletedNotification;
+  error: CodexErrorNotification;
 }
 
 export type CodexNotificationMethod = keyof CodexNotificationMap;
