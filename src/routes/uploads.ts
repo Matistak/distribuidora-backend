@@ -58,6 +58,7 @@ export async function uploadRoutes(app: FastifyInstance) {
       filasNuevas: result.filasNuevas,
       filasOmitidas: result.filasOmitidas,
       filasErrores: result.filasErrores,
+      errores: parsed.errores,
       estado: result.estado,
     };
     return reply.send(respuesta);
