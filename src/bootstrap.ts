@@ -1,49 +1,76 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { copyFileSync, existsSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  appDataDir,
+  ensureDataDirs,
+  findResource,
+  isPackaged,
+  resolvePrismaEnv,
+} from "./lib/appPaths.js";
 
-const APP_ID = "com.distribuidora.app";
+/**
+ * Etapa 8: verifica que una DB existente sea utilizable. Una base corrupta
+ * (p. ej. un archivo creado a mano, sin las tablas core, o un backup mal
+ * restaurado) hace que la aplicacion arranque sin schema. Se mueve a un lado
+ * y se re-siembra desde la semilla incluida en el instalador. Una DB con el
+ * schema pero sin datos es VALIDA (la app del cliente arranca vacia).
+ */
+function dbTieneTablasCore(dbPath: string): boolean {
+  const sqlite = (globalThis as { Bun?: { sqlite?: unknown } }).Bun?.sqlite as
+    | ((path: string, opts?: { readonly?: boolean }) => {
+        query: (sql: string) => { get: () => Record<string, unknown> | null };
+        close: () => void;
+      })
+    | undefined;
+  if (sqlite) {
+    try {
+      const db = sqlite(dbPath, { readonly: true });
+      const row = db
+        .query(
+          "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('Venta','Carga')",
+        )
+        .get();
+      db.close();
+      return row?.n === 2;
+    } catch {
+      // se continua con el fallback por tamano
+    }
+  }
+  // Fallback heuristico sin driver: la semilla empaquetada es una DB con
+  // schema pero SIN datos (pequena), asi que solo se considera invalido un
+  // archivo vacio (0 bytes) o ilegible.
+  try {
+    return statSync(dbPath).size > 0;
+  } catch {
+    return true;
+  }
+}
 
 export function bootstrap() {
-  const dir = import.meta.dirname ?? "";
-  const isCompiled = dir.includes("$bunfs") || dir.includes("~BUN");
-
-  if (!isCompiled) {
+  if (!isPackaged()) {
     // Prisma no carga .env en tiempo de ejecucion; usa la DB local como fallback.
-    const projectDir = dir ? dirname(dir) : process.cwd();
+    // En desarrollo (tsx) el modulo vive en src/; compilado, en dist/.
+    const projectDir = dirname(import.meta.dirname);
     process.env["DATABASE_URL"] ||= `file:${join(projectDir, "prisma", "distribuidora.db")}`;
     return;
   }
 
-  const execDir = dirname(process.execPath);
+  ensureDataDirs();
 
-  const resourceDirs = [
-    execDir,
-    join(execDir, "resources"),
-    join(execDir, "..", "Resources"),
-    join(execDir, "..", "Resources", "resources"),
-  ].filter((d) => existsSync(d));
+  const dbPath = join(appDataDir(), "distribuidora.db");
+  const seed = findResource((f) => f === "distribuidora.db");
 
-  const findResource = (predicate: (name: string) => boolean): string => {
-    for (const d of resourceDirs) {
-      let entries: string[];
-      try {
-        entries = readdirSync(d);
-      } catch {
-        continue;
-      }
-      const match = entries.find(predicate);
-      if (match) return join(d, match);
+  if (existsSync(dbPath) && !dbTieneTablasCore(dbPath)) {
+    const corrupt = `${dbPath}.corrupt-${Date.now()}`;
+    try {
+      renameSync(dbPath, corrupt);
+      console.warn(`DB local sin tablas core; movida a ${corrupt} y se re-sembrara.`);
+    } catch (error) {
+      console.warn("No se pudo mover la DB local invalida:", error);
     }
-    return "";
-  };
+  }
 
-  const dataDir = appDataDir();
-  mkdirSync(dataDir, { recursive: true });
-
-  const dbPath = join(dataDir, "distribuidora.db");
   if (!existsSync(dbPath)) {
-    const seed = findResource((f) => f === "distribuidora.db");
     if (seed) {
       copyFileSync(seed, dbPath);
       console.log(`DB inicializada desde la semilla en ${dbPath}`);
@@ -51,26 +78,6 @@ export function bootstrap() {
       console.warn("No se encontro la DB semilla; Prisma creara una vacia sin tablas.");
     }
   }
-  process.env["DATABASE_URL"] = `file:${dbPath}`;
 
-  const enginePath = findResource(
-    (f) => f.startsWith("libquery_engine-") || f.startsWith("query_engine-"),
-  );
-  if (enginePath && process.env["PRISMA_QUERY_ENGINE_LIBRARY"] === undefined) {
-    process.env["PRISMA_QUERY_ENGINE_LIBRARY"] = enginePath;
-  } else if (!enginePath) {
-    console.warn("No se encontro el engine de Prisma junto al ejecutable.");
-  }
-}
-
-function appDataDir(): string {
-  if (process.platform === "win32") {
-    const base = process.env["APPDATA"] ?? join(homedir(), "AppData", "Roaming");
-    return join(base, APP_ID);
-  }
-  if (process.platform === "darwin") {
-    return join(homedir(), "Library", "Application Support", APP_ID);
-  }
-  const base = process.env["XDG_DATA_HOME"] ?? join(homedir(), ".local", "share");
-  return join(base, APP_ID);
+  resolvePrismaEnv();
 }

@@ -1,4 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,14 +33,38 @@ for (const engine of engines) {
   console.log("✓ Copiado", engine);
 }
 
-const dbSrc = join(root, "prisma", "distribuidora.db");
-if (existsSync(dbSrc)) {
-  copyFileSync(dbSrc, join(distDir, "distribuidora.db"));
-  console.log("✓ Copiada DB semilla distribuidora.db");
-} else {
-  console.warn(
-    "✗ prisma/distribuidora.db no existe. Corre `npx prisma db push` antes de empaquetar.",
-  );
+/**
+ * Genera la DB semilla VACIA (solo schema) para el instalador: la app del
+ * cliente debe arrancar sin datos y recibir su propio Excel por "Cargar
+ * Excel". La DB de desarrollo (`prisma/distribuidora.db`) queda fuera del
+ * empaquetado.
+ */
+function generarSeedVacia() {
+  const tempSeed = join(root, "prisma", ".seed-vacia.db");
+  const schemaPath = join(root, "prisma", "schema.prisma");
+  rmSync(tempSeed, { force: true });
+
+  try {
+    // SQLite con ruta absoluta: en Windows se usan barras normales.
+    const dbUrl = `file:${tempSeed.replace(/\\/g, "/")}`;
+    execFileSync(
+      "npx",
+      ["prisma", "db", "push", "--schema", schemaPath, "--skip-generate", "--accept-data-loss"],
+      {
+        cwd: root,
+        env: { ...process.env, DATABASE_URL: dbUrl },
+        stdio: "inherit",
+      },
+    );
+    copyFileSync(tempSeed, join(distDir, "distribuidora.db"));
+    console.log("✓ Generada DB semilla VACIA (solo schema) como distribuidora.db");
+  } catch (error) {
+    console.warn("✗ No se pudo generar la DB semilla vacia:", error);
+  } finally {
+    rmSync(tempSeed, { force: true });
+  }
 }
+
+generarSeedVacia();
 
 console.log("\nAssets copiados a", distDir);

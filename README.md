@@ -32,9 +32,11 @@ cp .env.example .env
 | `CORS_ORIGIN`  | Orígenes CORS separados por coma | `*`                       |
 
 En desarrollo, la base está en `prisma/distribuidora.db`. En el binario
-empaquetado, `src/bootstrap.ts` copia la base semilla al directorio de datos de
-la aplicación y configura allí `DATABASE_URL`. La base de `prisma/` no debe
-considerarse el backup de producción.
+empaquetado, `src/bootstrap.ts` copia la semilla al directorio de datos de la
+aplicación y configura allí `DATABASE_URL`. La semilla del instalador es una
+**base vacía con el schema** (generada en `scripts/copy-assets.js` con
+`prisma db push`): el cliente arranca sin datos y carga su propio Excel. La
+base de `prisma/` no debe considerarse el backup de producción.
 
 Si no existe `.env`, el backend usa automáticamente
 `prisma/distribuidora.db` como base SQLite local.

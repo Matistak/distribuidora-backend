@@ -10,7 +10,9 @@ import { uploadRoutes } from "./routes/uploads.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { ventasRoutes } from "./routes/ventas.js";
 import { filtrosRoutes } from "./routes/filtros.js";
+import { chatRoutes } from "./routes/chat.js";
 import { configureSqlite } from "./services/sqlitePerformance.js";
+import { runWeeklyBackup } from "./backups.js";
 
 export const prisma = new PrismaClient();
 
@@ -22,6 +24,32 @@ async function ensureImportSchema() {
     await prisma.$executeRawUnsafe(
       'ALTER TABLE "Carga" ADD COLUMN "filasErrores" INTEGER NOT NULL DEFAULT 0',
     );
+  }
+}
+
+/**
+ * Etapa 8: alinea el schema en bases existentes. Las instalaciones creadas
+ * antes de la Fase 4 no tienen la tabla `ChatConversation`; crearla no
+ * destruye datos (es una tabla nueva). Con esto las actualizaciones no
+ * pierden el historial de conversaciones.
+ */
+async function ensureChatSchema() {
+  try {
+    await prisma.$queryRaw`SELECT "codexThreadId" FROM "ChatConversation" LIMIT 1`;
+  } catch {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ChatConversation" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "codexThreadId" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "selectedModel" TEXT NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "ChatConversation_codexThreadId_key"
+        ON "ChatConversation"("codexThreadId");
+    `);
+    console.log("Tabla ChatConversation creada en una base existente.");
   }
 }
 
@@ -41,6 +69,7 @@ export async function buildApp() {
 
   await configureSqlite(prisma);
   await ensureImportSchema();
+  await ensureChatSchema();
 
   const origins = process.env["CORS_ORIGIN"]?.split(",").map((s) => s.trim()).filter(Boolean) ?? ["*"];
   await app.register(cors, {
@@ -79,6 +108,7 @@ export async function buildApp() {
   await app.register(dashboardRoutes);
   await app.register(ventasRoutes);
   await app.register(filtrosRoutes);
+  await app.register(chatRoutes);
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -87,6 +117,10 @@ export async function buildApp() {
 
 async function start() {
   const app = await buildApp();
+
+  // Etapa 8: backup semanal del historial (conversaciones + ventas).
+  await runWeeklyBackup(prisma);
+
   const port = parseInt(process.env["PORT"] ?? "3001", 10);
 
   try {
@@ -99,6 +133,15 @@ async function start() {
     console.log(`     GET    /api/dashboard      — KPIs + rankings`);
     console.log(`     GET    /api/ventas         — filas paginadas`);
     console.log(`     GET    /api/filtros        — opciones de filtro`);
+    console.log(`     GET    /api/chat/status    — estado de Codex`);
+    console.log(`     GET    /api/chat/models    — modelos disponibles`);
+    console.log(`     POST   /api/chat/restart   — reiniciar app-server`);
+    console.log(`     GET    /api/chat/conversations        — historial de conversaciones`);
+    console.log(`     POST   /api/chat/conversations        — nueva conversación`);
+    console.log(`     GET    /api/chat/conversations/:id    — mensajes de una conversación`);
+    console.log(`     POST   /api/chat/conversations/:id/resume — reanudar thread`);
+    console.log(`     POST   /api/chat/conversations/:id/messages — enviar mensaje (SSE)`);
+    console.log(`     POST   /api/chat/conversations/:id/cancel — interrumpir turno`);
     console.log(`     GET    /health             — health check\n`);
   } catch (err) {
     app.log.error(err);

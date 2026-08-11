@@ -23,7 +23,8 @@ type RankingRaw = {
   participacion: NumericValue;
 };
 
-function whereClausula(
+/** Construye la clausula WHERE compartida (fechas + filtros) para consultas de ventas. */
+export function whereClausula(
   desde: string,
   hasta: string,
   f: Filtros,

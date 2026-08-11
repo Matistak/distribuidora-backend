@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { VentaRow } from "../lib/types.js";
+import type { UploadRowError, VentaRow } from "../lib/types.js";
 
 const REQUIRED_COLUMNS = [
   "cod compania", "compania", "cod distribuidora", "distribuidora", "cod cliente",
@@ -28,6 +28,7 @@ export type ParsedExcel = {
   filas: VentaRow[];
   filasTotales: number;
   filasErrores: number;
+  errores: UploadRowError[];
 };
 
 export class ExcelValidationError extends Error {
@@ -245,17 +246,17 @@ export function parseExcel(buffer: ArrayBuffer | Uint8Array): ParsedExcel {
   if (rawRows.length === 0) throw new ExcelValidationError("El archivo no contiene registros");
 
   const filas: VentaRow[] = [];
-  let filasErrores = 0;
+  const errores: UploadRowError[] = [];
   rawRows.forEach((row, index) => {
     try {
       filas.push(parseRow(row, index + 2));
     } catch (error) {
       if (error instanceof ExcelValidationError) {
-        filasErrores += 1;
+        errores.push({ fila: index + 2, motivo: error.message });
         return;
       }
       throw error;
     }
   });
-  return { filas, filasTotales: rawRows.length, filasErrores };
+  return { filas, filasTotales: rawRows.length, filasErrores: errores.length, errores };
 }
