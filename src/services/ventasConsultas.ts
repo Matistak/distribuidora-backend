@@ -193,11 +193,12 @@ export async function ventasPorPeriodo(
   }
 
   const where = whereClausula(desde, hasta, filtrosWhere(filtros));
+  const sinMes = granularidad === "mes" ? Prisma.sql` AND v."anhoMes" IS NOT NULL` : Prisma.sql``;
   const exp = (column: string, cast: string, orden: string) => Prisma.sql`
     SELECT CAST(${Prisma.raw(column)} AS TEXT) AS "label",
            CAST(SUM(v."montoVtaNetaGua") AS ${Prisma.raw(cast)}) AS "valor",
            CAST(COUNT(DISTINCT v."nroDoc") AS INTEGER) AS "facturas"
-    FROM "Venta" v WHERE ${where}
+    FROM "Venta" v WHERE ${where}${sinMes}
     GROUP BY ${Prisma.raw(column)} ORDER BY ${Prisma.raw(orden)} ASC
   `;
 
@@ -264,11 +265,11 @@ export async function rankingVentas(
   const filas = await prisma.$queryRaw<
     Array<{ nombre: string; valor: number | bigint; facturas: number | bigint }>
   >(Prisma.sql`
-    SELECT v.${Prisma.raw(columna)} AS "nombre",
+    SELECT COALESCE(v.${Prisma.raw(columna)}, 'SIN DATO') AS "nombre",
            CAST(SUM(v."montoVtaNetaGua") AS REAL) AS "valor",
            CAST(COUNT(DISTINCT v."nroDoc") AS INTEGER) AS "facturas"
     FROM "Venta" v WHERE ${where}
-    GROUP BY v.${Prisma.raw(columna)}
+    GROUP BY COALESCE(v.${Prisma.raw(columna)}, 'SIN DATO')
     ORDER BY "valor" DESC
     LIMIT ${limite}
   `);

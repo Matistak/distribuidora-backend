@@ -53,7 +53,12 @@ function text(value: unknown): string {
   return value === null || value === undefined ? "" : String(value).trim();
 }
 
-function numberValue(value: unknown, column: string, rowNumber: number): number {
+function nullableText(value: unknown): string | null {
+  const source = text(value);
+  return source ? source : null;
+}
+
+function numberValue(value: unknown, column: string, rowNumber: number): number | null {
   let result: number | undefined;
   if (typeof value === "number" && Number.isFinite(value)) {
     result = value;
@@ -62,7 +67,7 @@ function numberValue(value: unknown, column: string, rowNumber: number): number 
     if (Number.isSafeInteger(result)) return result;
   } else {
     const source = text(value);
-    if (!source) throw new ExcelValidationError(`Fila ${rowNumber}: ${column} debe ser numérico`);
+    if (!source) return null;
     const normalized =
       source.includes(",") && source.includes(".")
         ? source.lastIndexOf(",") > source.lastIndexOf(".")
@@ -156,28 +161,39 @@ function parseRow(row: Record<string, unknown>, rowNumber: number): VentaRow {
   const anho = numeric("anho");
   const mes = numeric("mes");
   const dia = numeric("dia");
+  if (anho === null || mes === null || dia === null) {
+    throw new ExcelValidationError(
+      `Fila ${rowNumber}: anho, mes y dia son obligatorios`,
+    );
+  }
   const nroDoc = text(value["nro doc"]);
   if (!nroDoc) throw new ExcelValidationError(`Fila ${rowNumber}: nro doc es obligatorio`);
   const codProducto = numeric("cod producto");
+  if (codProducto === null) {
+    throw new ExcelValidationError(`Fila ${rowNumber}: cod producto es obligatorio`);
+  }
   if (codProducto < 0) {
     throw new ExcelValidationError(`Fila ${rowNumber}: cod producto no es válido`);
   }
   const nroComprobante = numeric("nro comprobante");
+  if (nroComprobante === null) {
+    throw new ExcelValidationError(`Fila ${rowNumber}: nro comprobante es obligatorio`);
+  }
   if (nroComprobante < 0) {
     throw new ExcelValidationError(`Fila ${rowNumber}: nro comprobante no es válido`);
   }
 
   return {
     codCompania: numeric("cod compania"),
-    compania: text(value.compania),
+    compania: nullableText(value.compania),
     codDistribuidora: numeric("cod distribuidora"),
-    distribuidora: text(value.distribuidora),
+    distribuidora: nullableText(value.distribuidora),
     codCliente: numeric("cod cliente"),
-    razonSocial: text(value["razon social"]),
+    razonSocial: nullableText(value["razon social"]),
     codProducto,
-    producto: text(value.producto),
+    producto: nullableText(value.producto),
     codMarca: numeric("cod marca"),
-    marca: text(value.marca),
+    marca: nullableText(value.marca),
     fecha: dateValue(value.fecha, anho, mes, dia, rowNumber),
     anhoMes: numeric("anho mes"),
     anho,
@@ -188,25 +204,25 @@ function parseRow(row: Record<string, unknown>, rowNumber: number): VentaRow {
     costoVtaGua: numeric("costo vta gua"),
     montoVtaNetaGua: numeric("monto vta neta gua"),
     codCanal: numeric("cod canal"),
-    canal: text(value.canal) || "SIN CANAL",
+    canal: nullableText(value.canal) ?? "SIN CANAL",
     codRamo: numeric("cod ramo"),
-    ramo: text(value.ramo),
+    ramo: nullableText(value.ramo),
     codVendedor: numeric("cod vendedor"),
-    vendedor: text(value.vendedor).replace(/\s*\.\s*/g, " ").trim() || "SIN VENDEDOR",
-    tipoDoc: text(value["tipo doc"]),
+    vendedor: nullableText(value.vendedor)?.replace(/\s*\.\s*/g, " ").trim() ?? "SIN VENDEDOR",
+    tipoDoc: nullableText(value["tipo doc"]),
     nroDoc,
     nroComprobante,
     codZona: numeric("cod zona"),
-    zona: text(value.zona) || "SIN ZONA",
+    zona: nullableText(value.zona) ?? "SIN ZONA",
     codTipoProducto: numeric("cod tipo producto"),
-    tipoProducto: text(value["tipo producto"]),
+    tipoProducto: nullableText(value["tipo producto"]),
     precioConIva: numeric("precio con iva"),
     precioSinIva: numeric("precio sin iva"),
     porcDescuento: numeric("porc descuento"),
     precioLista: numeric("precio lista"),
     iva: numeric("iva"),
-    ciudad: text(value.ciudad) || "SIN CIUDAD",
-    ruc: text(value.ruc),
+    ciudad: nullableText(value.ciudad) ?? "SIN CIUDAD",
+    ruc: nullableText(value.ruc),
     latitud: numeric("latitud"),
     longitud: numeric("longitud"),
   };

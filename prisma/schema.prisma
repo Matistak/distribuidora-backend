@@ -10,47 +10,47 @@ datasource db {
 model Venta {
   id Int @id @default(autoincrement())
 
-  codCompania       Int
-  compania          String
-  codDistribuidora  Int
-  distribuidora     String
-  codCliente        Int
-  razonSocial       String
+  codCompania       Int?
+  compania          String?
+  codDistribuidora  Int?
+  distribuidora     String?
+  codCliente        Int?
+  razonSocial       String?
   codProducto       Int
-  producto          String
-  codMarca          Int
-  marca             String
+  producto          String?
+  codMarca          Int?
+  marca             String?
   fecha             String
-  anhoMes           Int
+  anhoMes           Int?
   anho              Int
   mes               Int
   dia               Int
-  vtaUnit           Float
-  montoIvaBrutaGua  Float
-  costoVtaGua       Float
-  montoVtaNetaGua   Float
-  codCanal          Int
-  canal             String
-  codRamo           Int
-  ramo              String
-  codVendedor       Int
-  vendedor          String
-  tipoDoc           String
+  vtaUnit           Float?
+  montoIvaBrutaGua  Float?
+  costoVtaGua       Float?
+  montoVtaNetaGua   Float?
+  codCanal          Int?
+  canal             String?
+  codRamo           Int?
+  ramo              String?
+  codVendedor       Int?
+  vendedor          String?
+  tipoDoc           String?
   nroDoc            String
   nroComprobante    BigInt
-  codZona           Int
-  zona              String
-  codTipoProducto   Int
-  tipoProducto      String
-  precioConIva      Float
-  precioSinIva      Float
-  porcDescuento     Float
-  precioLista       Float
-  iva               Float
-  ciudad            String
-  ruc               String
-  latitud           Float
-  longitud          Float
+  codZona           Int?
+  zona              String?
+  codTipoProducto   Int?
+  tipoProducto      String?
+  precioConIva      Float?
+  precioSinIva      Float?
+  porcDescuento     Float?
+  precioLista       Float?
+  iva               Float?
+  ciudad            String?
+  ruc               String?
+  latitud           Float?
+  longitud          Float?
 
   cargaId Int
   carga   Carga @relation(fields: [cargaId], references: [id])

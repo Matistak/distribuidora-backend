@@ -146,24 +146,24 @@ export async function obtenerDashboard(
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
-      SELECT v."marca" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+      SELECT COALESCE(v."marca", 'SIN MARCA') AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
              CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
-      GROUP BY v."marca" ORDER BY valor DESC LIMIT 10
+      GROUP BY COALESCE(v."marca", 'SIN MARCA') ORDER BY valor DESC LIMIT 10
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
-      SELECT v."razonSocial" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+      SELECT COALESCE(v."razonSocial", 'SIN CLIENTE') AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
              CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
-      GROUP BY v."razonSocial" ORDER BY valor DESC LIMIT 5
+      GROUP BY COALESCE(v."razonSocial", 'SIN CLIENTE') ORDER BY valor DESC LIMIT 5
     `),
 
     queryRaw<RankingRaw[]>(Prisma.sql`
-      SELECT v."producto" AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
+      SELECT COALESCE(v."producto", 'SIN PRODUCTO') AS nombre, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor,
              CAST(SUM(v."montoVtaNetaGua") AS REAL) / NULLIF(${totalVentaNeta}, 0) AS participacion
       FROM "Venta" v WHERE ${where}
-      GROUP BY v."producto" ORDER BY valor DESC LIMIT 8
+      GROUP BY COALESCE(v."producto", 'SIN PRODUCTO') ORDER BY valor DESC LIMIT 8
     `),
   ]);
 

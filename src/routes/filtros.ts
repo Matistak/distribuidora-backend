@@ -13,10 +13,10 @@ export async function filtrosRoutes(app: FastifyInstance) {
     ]);
 
     const resultado: OpcionesFiltro = {
-      vendedores: vendedores.map((v) => v.vendedor),
-      canales: canales.map((c) => c.canal),
-      ciudades: ciudades.map((c) => c.ciudad),
-      zonas: zonas.map((z) => z.zona),
+      vendedores: vendedores.map((v) => v.vendedor).filter((v): v is string => v !== null),
+      canales: canales.map((c) => c.canal).filter((c): c is string => c !== null),
+      ciudades: ciudades.map((c) => c.ciudad).filter((c): c is string => c !== null),
+      zonas: zonas.map((z) => z.zona).filter((z): z is string => z !== null),
     };
 
     return reply.send(resultado);
