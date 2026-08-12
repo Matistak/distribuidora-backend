@@ -7,9 +7,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Cliente {
+  id          Int     @id @default(autoincrement())
+  codCliente  Int?
+  razonSocial String?
+  ruc         String?
+  ciudad      String?
+  latitud     Float?
+  longitud    Float?
+
+  @@unique([codCliente, razonSocial])
+}
+
+model Vendedor {
+  id          Int     @id @default(autoincrement())
+  codVendedor Int?
+  vendedor    String?
+
+  @@unique([codVendedor, vendedor])
+}
+
 model Venta {
   id Int @id @default(autoincrement())
-
   codCompania       Int?
   compania          String?
   codDistribuidora  Int?

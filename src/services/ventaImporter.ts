@@ -41,5 +41,58 @@ export async function insertRows(tx: Prisma.TransactionClient, rows: VentaRow[],
       Prisma.sql`INSERT OR IGNORE INTO "Venta" (${sqlColumns}) VALUES ${values}`,
     );
   }
+  await insertClientes(tx, rows);
+  await insertVendedores(tx, rows);
   return inserted;
+}
+
+/** Deduplica y persiste los clientes presentes en la carga (tabla Cliente). */
+async function insertClientes(tx: Prisma.TransactionClient, rows: VentaRow[]) {
+  const unicos = new Map<
+    string,
+    { codCliente: number | null; razonSocial: string | null; ruc: string | null }
+  >();
+  for (const row of rows) {
+    if (row.codCliente === null && row.razonSocial === null) continue;
+    const clave = row.codCliente !== null ? `c:${row.codCliente}` : `r:${row.razonSocial ?? ""}`;
+    if (!unicos.has(clave)) {
+      unicos.set(clave, {
+        codCliente: row.codCliente,
+        razonSocial: row.razonSocial,
+        ruc: row.ruc,
+      });
+    }
+  }
+  if (unicos.size === 0) return;
+
+  const valores = Prisma.join(
+    [...unicos.values()].map(
+      (c) => Prisma.sql`(${c.codCliente}, ${c.razonSocial}, ${c.ruc})`,
+    ),
+    ", ",
+  );
+  await tx.$executeRaw(
+    Prisma.sql`INSERT OR IGNORE INTO "Cliente" ("codCliente", "razonSocial", "ruc") VALUES ${valores}`,
+  );
+}
+
+/** Deduplica y persiste los vendedores presentes en la carga (tabla Vendedor). */
+async function insertVendedores(tx: Prisma.TransactionClient, rows: VentaRow[]) {
+  const unicos = new Map<string, { codVendedor: number | null; vendedor: string | null }>();
+  for (const row of rows) {
+    if (row.codVendedor === null && row.vendedor === null) continue;
+    const clave = row.codVendedor !== null ? `v:${row.codVendedor}` : `n:${row.vendedor ?? ""}`;
+    if (!unicos.has(clave)) {
+      unicos.set(clave, { codVendedor: row.codVendedor, vendedor: row.vendedor });
+    }
+  }
+  if (unicos.size === 0) return;
+
+  const valores = Prisma.join(
+    [...unicos.values()].map((v) => Prisma.sql`(${v.codVendedor}, ${v.vendedor})`),
+    ", ",
+  );
+  await tx.$executeRaw(
+    Prisma.sql`INSERT OR IGNORE INTO "Vendedor" ("codVendedor", "vendedor") VALUES ${valores}`,
+  );
 }

@@ -10,6 +10,7 @@ import { uploadRoutes } from "./routes/uploads.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { ventasRoutes } from "./routes/ventas.js";
 import { filtrosRoutes } from "./routes/filtros.js";
+import { clientesRoutes } from "./routes/clientes.js";
 import { chatRoutes } from "./routes/chat.js";
 import { configureSqlite } from "./services/sqlitePerformance.js";
 import { runWeeklyBackup } from "./backups.js";
@@ -121,6 +122,7 @@ export async function buildApp() {
   await app.register(dashboardRoutes);
   await app.register(ventasRoutes);
   await app.register(filtrosRoutes);
+  await app.register(clientesRoutes);
   await app.register(chatRoutes);
 
   app.get("/health", async () => ({ status: "ok" }));

@@ -39,6 +39,8 @@ export function whereClausula(
       Prisma.sql`${Prisma.raw(alias)}."fecha" < date(${hasta}, '+1 day')`,
     );
   }
+  if (f.cliente)
+    conds.push(Prisma.sql`${Prisma.raw(alias)}."razonSocial" LIKE ${`%${f.cliente}%`}`);
   if (f.vendedor)
     conds.push(Prisma.sql`${Prisma.raw(alias)}."vendedor" = ${f.vendedor}`);
   if (f.canal)

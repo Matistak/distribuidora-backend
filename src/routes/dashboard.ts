@@ -9,15 +9,16 @@ export async function dashboardRoutes(app: FastifyInstance) {
     Querystring: {
       desde?: string;
       hasta?: string;
+      cliente?: string;
       vendedor?: string;
       canal?: string;
       ciudad?: string;
       zona?: string;
     };
   }>("/api/dashboard", async (req, reply) => {
-    const { desde = "", hasta = "", vendedor, canal, ciudad, zona } = req.query;
+    const { desde = "", hasta = "", cliente, vendedor, canal, ciudad, zona } = req.query;
 
-    const filtros: Filtros = { vendedor, canal, ciudad, zona };
+    const filtros: Filtros = { cliente, vendedor, canal, ciudad, zona };
     const data = await obtenerDashboard(prisma, desde, hasta, filtros);
 
     return reply.send(data);

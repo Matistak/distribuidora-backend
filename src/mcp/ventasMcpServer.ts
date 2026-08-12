@@ -48,6 +48,7 @@ const filtrosJsonSchema: {
   properties: {
     desde: { type: "string", description: "Fecha de inicio inclusive (YYYY-MM-DD)." },
     hasta: { type: "string", description: "Fecha de fin inclusive (YYYY-MM-DD)." },
+    cliente: { type: "string", description: "Razon social del cliente (coincidencia parcial)." },
     vendedor: { type: "string", description: "Nombre exacto del vendedor." },
     canal: { type: "string", description: "Nombre exacto del canal." },
     ciudad: { type: "string", description: "Nombre exacto de la ciudad." },

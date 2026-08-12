@@ -13,6 +13,7 @@ export async function ventasRoutes(app: FastifyInstance) {
       pageSize?: string;
       desde?: string;
       hasta?: string;
+      cliente?: string;
       vendedor?: string;
       canal?: string;
       ciudad?: string;
@@ -37,7 +38,7 @@ export async function ventasRoutes(app: FastifyInstance) {
       ),
       MAX_PAGE_SIZE,
     );
-    const { desde, hasta, vendedor, canal, ciudad, zona } = req.query;
+    const { desde, hasta, cliente, vendedor, canal, ciudad, zona } = req.query;
 
     const where: Record<string, unknown> = {};
     if (desde || hasta) {
@@ -49,6 +50,22 @@ export async function ventasRoutes(app: FastifyInstance) {
         fecha.lt = siguienteDia.toISOString().slice(0, 10);
       }
       where.fecha = fecha;
+    }
+    if (cliente) {
+      const coincidencias = await prisma.cliente.findMany({
+        where: { razonSocial: { contains: cliente } },
+        select: { codCliente: true, razonSocial: true },
+      });
+      const cods = coincidencias
+        .map((c) => c.codCliente)
+        .filter((c): c is number => c !== null);
+      const nombres = coincidencias
+        .map((c) => c.razonSocial)
+        .filter((c): c is string => c !== null);
+      const or: Record<string, unknown>[] = [];
+      if (cods.length) or.push({ codCliente: { in: cods } });
+      if (nombres.length) or.push({ razonSocial: { in: nombres } });
+      where.OR = or.length ? or : [{ id: { lt: 0 } }];
     }
     if (vendedor) where.vendedor = vendedor;
     if (canal) where.canal = canal;

@@ -189,7 +189,7 @@ function parseRow(row: Record<string, unknown>, rowNumber: number): VentaRow {
     codDistribuidora: numeric("cod distribuidora"),
     distribuidora: nullableText(value.distribuidora),
     codCliente: numeric("cod cliente"),
-    razonSocial: nullableText(value["razon social"]),
+    razonSocial: nullableText(value["razon social"]) ?? "SIN CLIENTE",
     codProducto,
     producto: nullableText(value.producto),
     codMarca: numeric("cod marca"),

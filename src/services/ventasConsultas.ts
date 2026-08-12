@@ -40,6 +40,7 @@ export const filtrosSchema = z.object({
   desde: z.string().optional(),
   /** Fecha de fin inclusive (YYYY-MM-DD). */
   hasta: z.string().optional(),
+  cliente: z.string().optional(),
   vendedor: z.string().optional(),
   canal: z.string().optional(),
   ciudad: z.string().optional(),
@@ -91,6 +92,7 @@ export function validarRango(filtros: FiltrosVentas): { desde: string; hasta: st
 /** Convierte los filtros validados al formato que usa `whereClausula`. */
 function filtrosWhere(filtros: FiltrosVentas): Filtros {
   return {
+    cliente: filtros.cliente?.trim() || undefined,
     vendedor: filtros.vendedor?.trim() || undefined,
     canal: filtros.canal?.trim() || undefined,
     ciudad: filtros.ciudad?.trim() || undefined,
