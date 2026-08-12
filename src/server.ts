@@ -25,6 +25,19 @@ async function ensureImportSchema() {
       'ALTER TABLE "Carga" ADD COLUMN "filasErrores" INTEGER NOT NULL DEFAULT 0',
     );
   }
+
+  // Prisma guarda los DateTime de SQLite como epoch en milisegundos. Convertimos
+  // esos valores heredados para que fecha quede siempre como YYYY-MM-DD.
+  await prisma.$executeRaw`
+    UPDATE "Venta"
+    SET "fecha" = strftime('%Y-%m-%d', CAST("fecha" AS INTEGER) / 1000, 'unixepoch')
+    WHERE typeof("fecha") IN ('integer', 'real')
+       OR (
+         typeof("fecha") = 'text'
+         AND trim("fecha") NOT GLOB '*[^0-9]*'
+         AND length(trim("fecha")) >= 12
+       )
+  `;
 }
 
 /**

@@ -110,11 +110,17 @@ interface ResumenFila {
   productosDistintos: number | bigint;
   costoTotal: number | bigint;
   notasCredito: number | bigint;
-  periodoDesde: number | bigint | null;
-  periodoHasta: number | bigint | null;
+  periodoDesde: string | number | bigint | null;
+  periodoHasta: string | number | bigint | null;
 }
 
 const toNumber = (value: number | bigint | null | undefined) => Number(value ?? 0);
+const toIsoDate = (value: string | number | bigint) => {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  return new Date(Number(value)).toISOString().slice(0, 10);
+};
 
 /** Resumen agregado de ventas del periodo + filtros (la herramienta principal). */
 export async function resumenVentas(
@@ -165,7 +171,7 @@ export async function resumenVentas(
   ];
   if (row.periodoDesde && row.periodoHasta) {
     lineas.push(
-      `- Periodo con datos: ${new Date(toNumber(row.periodoDesde)).toISOString().slice(0, 10)} al ${new Date(toNumber(row.periodoHasta)).toISOString().slice(0, 10)}`,
+      `- Periodo con datos: ${toIsoDate(row.periodoDesde)} al ${toIsoDate(row.periodoHasta)}`,
     );
   }
   return lineas.join("\n");

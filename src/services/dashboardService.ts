@@ -5,14 +5,11 @@ const toNumber = (value: number | bigint | null | undefined) =>
   Number(value ?? 0);
 const toIsoDate = (value: string | number | bigint | null | undefined) => {
   if (value === null || value === undefined || value === "") return "";
-  const numeric =
-    typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
-  const date = new Date(
-    typeof numeric === "string" ? numeric : Number(numeric),
-  );
-  return Number.isNaN(date.getTime())
-    ? String(value).slice(0, 10)
-    : date.toISOString().slice(0, 10);
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  const date = new Date(Number(value));
+  return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : date.toISOString().slice(0, 10);
 };
 
 type NumericValue = number | bigint | null | undefined;
@@ -34,12 +31,12 @@ export function whereClausula(
 
   if (desde) {
     conds.push(
-      Prisma.sql`${Prisma.raw(alias)}."fecha" >= CAST(strftime('%s', ${desde}) AS INTEGER) * 1000`,
+      Prisma.sql`${Prisma.raw(alias)}."fecha" >= ${desde}`,
     );
   }
   if (hasta) {
     conds.push(
-      Prisma.sql`${Prisma.raw(alias)}."fecha" < (CAST(strftime('%s', ${hasta}) AS INTEGER) + 86400) * 1000`,
+      Prisma.sql`${Prisma.raw(alias)}."fecha" < date(${hasta}, '+1 day')`,
     );
   }
   if (f.vendedor)

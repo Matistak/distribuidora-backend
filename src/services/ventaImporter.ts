@@ -20,7 +20,7 @@ function sqlValues(row: VentaRow, cargaId: number) {
   return Prisma.sql`(
     ${row.codCompania}, ${row.compania}, ${row.codDistribuidora}, ${row.distribuidora},
     ${row.codCliente}, ${row.razonSocial}, ${row.codProducto}, ${row.producto},
-    ${row.codMarca}, ${row.marca}, ${new Date(`${row.fecha}T00:00:00.000Z`)},
+    ${row.codMarca}, ${row.marca}, ${row.fecha},
     ${row.anhoMes}, ${row.anho}, ${row.mes}, ${row.dia}, ${row.vtaUnit},
     ${row.montoIvaBrutaGua}, ${row.costoVtaGua}, ${row.montoVtaNetaGua},
     ${row.codCanal}, ${row.canal}, ${row.codRamo}, ${row.ramo}, ${row.codVendedor},

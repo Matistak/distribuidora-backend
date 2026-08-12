@@ -20,7 +20,7 @@ model Venta {
   producto          String
   codMarca          Int
   marca             String
-  fecha             DateTime
+  fecha             String
   anhoMes           Int
   anho              Int
   mes               Int

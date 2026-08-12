@@ -41,12 +41,12 @@ export async function ventasRoutes(app: FastifyInstance) {
 
     const where: Record<string, unknown> = {};
     if (desde || hasta) {
-      const fecha: { gte?: Date; lt?: Date } = {};
-      if (desde) fecha.gte = new Date(`${desde}T00:00:00.000Z`);
+      const fecha: { gte?: string; lt?: string } = {};
+      if (desde) fecha.gte = desde;
       if (hasta) {
         const siguienteDia = new Date(`${hasta}T00:00:00.000Z`);
         siguienteDia.setUTCDate(siguienteDia.getUTCDate() + 1);
-        fecha.lt = siguienteDia;
+        fecha.lt = siguienteDia.toISOString().slice(0, 10);
       }
       where.fecha = fecha;
     }
@@ -76,7 +76,7 @@ export async function ventasRoutes(app: FastifyInstance) {
       producto: v.producto,
       codMarca: v.codMarca,
       marca: v.marca,
-      fecha: v.fecha.toISOString().slice(0, 10),
+      fecha: v.fecha,
       anhoMes: v.anhoMes,
       anho: v.anho,
       mes: v.mes,
