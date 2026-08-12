@@ -85,6 +85,38 @@ export type OpcionesFiltro = {
   zonas: string[];
 };
 
+export type VendedorResumen = {
+  vendedor: string;
+  facturas: number;
+  clientes: number;
+  unidades: number;
+  ventaBruta: number;
+  ventaNeta: number;
+  costo: number;
+  margenPorc: number;
+  ticketPromedio: number;
+  participacion: number;
+  ultimaVenta: string;
+};
+
+export type VendedoresKpis = {
+  vendedoresActivos: number;
+  ventaNeta: number;
+  facturas: number;
+  unidades: number;
+  ticketPromedio: number;
+  margenPorc: number;
+  concentracionTop10: number;
+};
+
+export type VendedoresData = {
+  kpis: VendedoresKpis;
+  /** Ranking con todos los filtros aplicados (tabla y top 10). */
+  data: VendedorResumen[];
+  /** Ranking solo por fechas, para los KPIs de cabecera. */
+  dataKpis: VendedorResumen[];
+};
+
 export type UploadResponse = {
   id: number;
   archivo: string;

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { VentaRow } from "../lib/types.js";
 import { prisma } from "../server.js";
+import { etiquetaCliente } from "../lib/clientes.js";
 
 export async function ventasRoutes(app: FastifyInstance) {
   const DEFAULT_PAGE_SIZE = 20;
@@ -52,14 +53,30 @@ export async function ventasRoutes(app: FastifyInstance) {
       where.fecha = fecha;
     }
     if (cliente) {
+      const separador = cliente.indexOf(" - ");
+      const ruc = separador >= 0 ? cliente.slice(0, separador) : "";
+      const razonSocial = separador >= 0 ? cliente.slice(separador + 3) : "";
       const coincidencias = await prisma.cliente.findMany({
-        where: { razonSocial: { contains: cliente } },
-        select: { codCliente: true, razonSocial: true },
+        where: {
+          OR: [
+            ...(separador >= 0 ? [{ ruc, razonSocial }] : []),
+            { razonSocial: { contains: cliente } },
+            { ruc: { contains: cliente } },
+          ],
+        },
+        select: { codCliente: true, razonSocial: true, ruc: true },
       });
-      const cods = coincidencias
+      const coincidenciasExactas = coincidencias.filter(
+        (c) => etiquetaCliente(c.ruc, c.razonSocial) === cliente,
+      );
+      const cods = (
+        coincidenciasExactas.length ? coincidenciasExactas : coincidencias
+      )
         .map((c) => c.codCliente)
         .filter((c): c is number => c !== null);
-      const nombres = coincidencias
+      const nombres = (
+        coincidenciasExactas.length ? coincidenciasExactas : coincidencias
+      )
         .map((c) => c.razonSocial)
         .filter((c): c is string => c !== null);
       const or: Record<string, unknown>[] = [];

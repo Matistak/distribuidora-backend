@@ -39,8 +39,12 @@ export function whereClausula(
       Prisma.sql`${Prisma.raw(alias)}."fecha" < date(${hasta}, '+1 day')`,
     );
   }
-  if (f.cliente)
-    conds.push(Prisma.sql`${Prisma.raw(alias)}."razonSocial" LIKE ${`%${f.cliente}%`}`);
+  if (f.cliente) {
+    const cliente = `%${f.cliente}%`;
+    conds.push(
+      Prisma.sql`(${Prisma.raw(alias)}."razonSocial" LIKE ${cliente} OR (${Prisma.raw(alias)}."ruc" IS NOT NULL AND ${Prisma.raw(alias)}."ruc" || ' - ' || ${Prisma.raw(alias)}."razonSocial" LIKE ${cliente}))`,
+    );
+  }
   if (f.vendedor)
     conds.push(Prisma.sql`${Prisma.raw(alias)}."vendedor" = ${f.vendedor}`);
   if (f.canal)

@@ -9,6 +9,7 @@ import { PrismaClient } from "@prisma/client";
 import { uploadRoutes } from "./routes/uploads.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { ventasRoutes } from "./routes/ventas.js";
+import { vendedoresRoutes } from "./routes/vendedores.js";
 import { filtrosRoutes } from "./routes/filtros.js";
 import { clientesRoutes } from "./routes/clientes.js";
 import { chatRoutes } from "./routes/chat.js";
@@ -121,6 +122,7 @@ export async function buildApp() {
   await app.register(uploadRoutes);
   await app.register(dashboardRoutes);
   await app.register(ventasRoutes);
+  await app.register(vendedoresRoutes);
   await app.register(filtrosRoutes);
   await app.register(clientesRoutes);
   await app.register(chatRoutes);
@@ -147,6 +149,7 @@ async function start() {
     console.log(`     GET    /api/uploads/:id    — estado de carga`);
     console.log(`     GET    /api/dashboard      — KPIs + rankings`);
     console.log(`     GET    /api/ventas         — filas paginadas`);
+    console.log(`     GET    /api/vendedores     — KPIs + resumen por vendedor`);
     console.log(`     GET    /api/filtros        — opciones de filtro`);
     console.log(`     GET    /api/chat/status    — estado de Codex`);
     console.log(`     GET    /api/chat/models    — modelos disponibles`);

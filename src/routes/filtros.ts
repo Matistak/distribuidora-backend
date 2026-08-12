@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../server.js";
 import type { OpcionesFiltro } from "../lib/types.js";
+import { etiquetaCliente } from "../lib/clientes.js";
 
 export async function filtrosRoutes(app: FastifyInstance) {
   /** GET /api/filtros — listas de clientes / vendedores / canales / ciudades / zonas */
@@ -8,8 +9,9 @@ export async function filtrosRoutes(app: FastifyInstance) {
     const [clientes, vendedores, canales, ciudades, zonas] = await Promise.all([
       prisma.cliente.findMany({
         where: { razonSocial: { not: null } },
-        select: { razonSocial: true },
+        select: { razonSocial: true, ruc: true },
         orderBy: { razonSocial: "asc" },
+        take: 10,
       }),
       prisma.vendedor.findMany({
         where: { vendedor: { not: null } },
@@ -22,7 +24,13 @@ export async function filtrosRoutes(app: FastifyInstance) {
     ]);
 
     const resultado: OpcionesFiltro = {
-      clientes: clientes.map((c) => c.razonSocial).filter((c): c is string => c !== null),
+      clientes: [
+        ...new Set(
+          clientes
+            .map((c) => etiquetaCliente(c.ruc, c.razonSocial))
+            .filter((c): c is string => c !== null),
+        ),
+      ],
       vendedores: vendedores.map((v) => v.vendedor).filter((v): v is string => v !== null),
       canales: canales.map((c) => c.canal).filter((c): c is string => c !== null),
       ciudades: ciudades.map((c) => c.ciudad).filter((c): c is string => c !== null),
