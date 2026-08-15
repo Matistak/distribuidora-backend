@@ -102,6 +102,29 @@ export type AlertasData = {
   alertas: Alerta[];
 };
 
+/** Tipo de dato de una columna del detalle, para formatear en el front. */
+export type ColumnaTipo = "texto" | "numero" | "moneda" | "porcentaje" | "fecha";
+
+export type ColumnaDetalle = {
+  clave: string;
+  titulo: string;
+  tipo: ColumnaTipo;
+};
+
+export type FilaDetalle = Record<string, string | number | null>;
+
+/** Filas que explican una alerta: el "cuales son" detras del numero. */
+export type DetalleAlerta = {
+  clave: string;
+  titulo: string;
+  /** Contexto de la comparacion o del umbral aplicado. */
+  detalle: string;
+  columnas: ColumnaDetalle[];
+  filas: FilaDetalle[];
+  /** Filas que cumplen la condicion; puede superar a filas.length si se trunco. */
+  total: number;
+};
+
 export type SeriePunto = { label: string; valor: number };
 export type RankingItem = { nombre: string; valor: number; participacion: number };
 
@@ -182,6 +205,41 @@ export type VendedoresData = {
   data: VendedorResumen[];
   /** Ranking solo por fechas, para los KPIs de cabecera. */
   dataKpis: VendedorResumen[];
+};
+
+export type ClienteResumen = {
+  cliente: string;
+  vendedor: string;
+  ciudad: string;
+  canal: string;
+  facturas: number;
+  productos: number;
+  unidades: number;
+  ventaBruta: number;
+  ventaNeta: number;
+  costo: number;
+  margenPorc: number;
+  ticketPromedio: number;
+  participacion: number;
+  ultimaCompra: string;
+};
+
+export type ClientesKpis = {
+  clientesActivos: number;
+  ventaNeta: number;
+  facturas: number;
+  unidades: number;
+  ticketPromedio: number;
+  margenPorc: number;
+  concentracionTop10: number;
+};
+
+export type ClientesData = {
+  kpis: ClientesKpis;
+  /** Ranking con todos los filtros aplicados (tabla y top 10). */
+  data: ClienteResumen[];
+  /** Ranking solo por fechas, para los KPIs de cabecera. */
+  dataKpis: ClienteResumen[];
 };
 
 export type UploadResponse = {

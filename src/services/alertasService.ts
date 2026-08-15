@@ -1,6 +1,13 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { whereClausula } from "./dashboardService.js";
-import type { Alerta, AlertasData, Filtros } from "../lib/types.js";
+import type {
+  Alerta,
+  AlertasData,
+  ColumnaDetalle,
+  DetalleAlerta,
+  FilaDetalle,
+  Filtros,
+} from "../lib/types.js";
 
 type Cliente = PrismaClient | Prisma.TransactionClient;
 
@@ -123,30 +130,25 @@ const BASE = {
 
 const CLAVES = Object.keys(BASE) as Array<keyof typeof BASE>;
 
-export async function obtenerAlertas(
-  prisma: Cliente,
-  filtros: Filtros,
-): Promise<AlertasData> {
+/** Ultimo dia con ventas dentro de los filtros; null si no hay datos. */
+async function fechaReferencia(prisma: Cliente, filtros: Filtros): Promise<string | null> {
   const whereGlobal = whereClausula("", "", filtros);
-
   const limites = await prisma.$queryRaw<Array<{ maxFecha: string | null }>>(Prisma.sql`
     SELECT MAX(v."fecha") AS "maxFecha" FROM "Venta" v WHERE ${whereGlobal}
   `);
-  const referencia = limites[0]?.maxFecha?.slice(0, 10) ?? null;
+  return limites[0]?.maxFecha?.slice(0, 10) ?? null;
+}
 
-  if (!referencia) {
-    return {
-      referencia: null,
-      alertas: CLAVES.map((clave) => ({
-        ...BASE[clave],
-        clave,
-        valor: null,
-        estado: "sin-datos" as const,
-        detalle: "sin ventas cargadas",
-      })),
-    };
-  }
+type Ventana = {
+  actual: Tramo;
+  previo: Tramo;
+  mesParcial: boolean;
+  /** Texto al pie: "vs. jul 2026 (1-11)". */
+  detalleMes: string;
+};
 
+/** Mes vigente de la referencia y el mismo tramo de dias del mes anterior. */
+function ventana(referencia: string): Ventana {
   const { anho, mes, dia } = partes(referencia);
   const actual: Tramo = { desde: armar(anho, mes, 1), hasta: referencia };
 
@@ -163,7 +165,30 @@ export async function obtenerAlertas(
   const baseComparacion = mesParcial
     ? `${etiquetaMes(anhoPrevio, mesPrevio)} (1-${dia})`
     : etiquetaMes(anhoPrevio, mesPrevio);
-  const detalleMes = `vs. ${baseComparacion}`;
+
+  return { actual, previo, mesParcial, detalleMes: `vs. ${baseComparacion}` };
+}
+
+export async function obtenerAlertas(
+  prisma: Cliente,
+  filtros: Filtros,
+): Promise<AlertasData> {
+  const referencia = await fechaReferencia(prisma, filtros);
+
+  if (!referencia) {
+    return {
+      referencia: null,
+      alertas: CLAVES.map((clave) => ({
+        ...BASE[clave],
+        clave,
+        valor: null,
+        estado: "sin-datos" as const,
+        detalle: "sin ventas cargadas",
+      })),
+    };
+  }
+
+  const { actual, previo, mesParcial, detalleMes } = ventana(referencia);
 
   const [vendedoresEnCaida, productosEnCaida, productosEnCrecimiento, clientesSinCompras] =
     await Promise.all([
@@ -192,4 +217,222 @@ export async function obtenerAlertas(
   }));
 
   return { referencia, alertas };
+}
+
+/** Tope de filas devueltas al modal; `total` informa cuantas cumplen la condicion. */
+const LIMITE_DETALLE = 300;
+
+const COLUMNAS_VARIACION: ColumnaDetalle[] = [
+  { clave: "nombre", titulo: "Nombre", tipo: "texto" },
+  { clave: "actual", titulo: "Mes vigente", tipo: "moneda" },
+  { clave: "previo", titulo: "Mes anterior", tipo: "moneda" },
+  { clave: "diferencia", titulo: "Diferencia", tipo: "moneda" },
+  { clave: "variacion", titulo: "Variación", tipo: "porcentaje" },
+  { clave: "unidades", titulo: "Unidades", tipo: "numero" },
+  { clave: "clientes", titulo: "Clientes", tipo: "numero" },
+  { clave: "ultimaVenta", titulo: "Última venta", tipo: "fecha" },
+];
+
+type FilaVariacion = {
+  nombre: string | null;
+  actual: number | null;
+  previo: number | null;
+  unidades: number | null;
+  clientes: number | bigint | null;
+  ultimaVenta: string | null;
+};
+
+/**
+ * Las entidades detras del contador: que vendieron antes y ahora, cuanto
+ * cambiaron y con que actividad (unidades, clientes, ultima venta).
+ */
+async function detalleVariacion(
+  prisma: Cliente,
+  columna: "vendedor" | "codProducto",
+  direccion: "caida" | "crecimiento",
+  actual: Tramo,
+  previo: Tramo,
+  filtros: Filtros,
+): Promise<{ filas: FilaDetalle[]; total: number }> {
+  const whereGlobal = whereClausula("", "", filtros);
+  const campo = Prisma.raw(`v."${columna}"`);
+  // Los productos se agrupan por codigo, pero se muestran por nombre.
+  const nombre =
+    columna === "vendedor"
+      ? Prisma.sql`v."vendedor"`
+      : Prisma.sql`COALESCE(MAX(v."producto"), 'Cód. ' || v."codProducto")`;
+  const comparacion =
+    direccion === "caida" ? Prisma.sql`"actual" < "previo"` : Prisma.sql`"actual" > "previo"`;
+  // Caida: primero la peor (diferencia mas negativa). Crecimiento: la mayor.
+  const orden = direccion === "caida" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+  const enActual = Prisma.sql`v."fecha" >= ${actual.desde} AND v."fecha" < date(${actual.hasta}, '+1 day')`;
+  const enPrevio = Prisma.sql`v."fecha" >= ${previo.desde} AND v."fecha" < date(${previo.hasta}, '+1 day')`;
+
+  const rows = await prisma.$queryRaw<FilaVariacion[]>(Prisma.sql`
+    SELECT * FROM (
+      SELECT
+        ${nombre} AS "nombre",
+        CAST(COALESCE(SUM(CASE WHEN ${enActual} THEN v."montoVtaNetaGua" END), 0) AS REAL) AS "actual",
+        CAST(COALESCE(SUM(CASE WHEN ${enPrevio} THEN v."montoVtaNetaGua" END), 0) AS REAL) AS "previo",
+        CAST(COALESCE(SUM(CASE WHEN ${enActual} THEN v."vtaUnit" END), 0) AS REAL) AS "unidades",
+        COUNT(DISTINCT CASE WHEN ${enActual} THEN v."codCliente" END) AS "clientes",
+        MAX(CASE WHEN ${enActual} THEN v."fecha" END) AS "ultimaVenta"
+      FROM "Venta" v
+      WHERE ${whereGlobal} AND ${campo} IS NOT NULL
+      GROUP BY ${campo}
+    )
+    WHERE "previo" > 0 AND ${comparacion}
+    ORDER BY ("actual" - "previo") ${orden}
+    LIMIT ${LIMITE_DETALLE + 1}
+  `);
+
+  const total = await contarVariacion(prisma, columna, direccion, actual, previo, filtros);
+
+  const filas: FilaDetalle[] = rows.slice(0, LIMITE_DETALLE).map((r) => {
+    const act = toNumber(r.actual);
+    const prev = toNumber(r.previo);
+    return {
+      nombre: r.nombre ?? "—",
+      actual: act,
+      previo: prev,
+      diferencia: act - prev,
+      variacion: prev > 0 ? ((act - prev) / prev) * 100 : null,
+      unidades: toNumber(r.unidades),
+      clientes: toNumber(r.clientes),
+      ultimaVenta: r.ultimaVenta?.slice(0, 10) ?? null,
+    };
+  });
+
+  return { filas, total };
+}
+
+const COLUMNAS_CLIENTES: ColumnaDetalle[] = [
+  { clave: "nombre", titulo: "Cliente", tipo: "texto" },
+  { clave: "ruc", titulo: "RUC", tipo: "texto" },
+  { clave: "diasSinComprar", titulo: "Días sin comprar", tipo: "numero" },
+  { clave: "ultimaCompra", titulo: "Última compra", tipo: "fecha" },
+  { clave: "montoUltimoAnho", titulo: "Comprado (últ. 12 meses)", tipo: "moneda" },
+  { clave: "compras", titulo: "Facturas (histórico)", tipo: "numero" },
+  { clave: "vendedor", titulo: "Vendedor", tipo: "texto" },
+  { clave: "ciudad", titulo: "Ciudad", tipo: "texto" },
+];
+
+type FilaCliente = {
+  nombre: string | null;
+  ruc: string | null;
+  diasSinComprar: number | null;
+  ultimaCompra: string | null;
+  montoUltimoAnho: number | null;
+  compras: number | bigint | null;
+  vendedor: string | null;
+  ciudad: string | null;
+};
+
+/** Clientes inactivos con su ultima compra, su volumen reciente y quien los atiende. */
+async function detalleClientesSinCompras(
+  prisma: Cliente,
+  referencia: string,
+  dias: number,
+  filtros: Filtros,
+): Promise<{ filas: FilaDetalle[]; total: number }> {
+  const whereGlobal = whereClausula("", "", filtros);
+  const corte = Prisma.sql`date(${referencia}, ${`-${dias} day`})`;
+  const desdeAnho = Prisma.sql`date(${referencia}, '-1 year')`;
+
+  const rows = await prisma.$queryRaw<FilaCliente[]>(Prisma.sql`
+    SELECT * FROM (
+      SELECT
+        COALESCE(MAX(v."razonSocial"), 'Cód. ' || v."codCliente") AS "nombre",
+        MAX(v."ruc") AS "ruc",
+        MAX(v."fecha") AS "ultimaCompra",
+        CAST(julianday(${referencia}) - julianday(MAX(v."fecha")) AS INTEGER) AS "diasSinComprar",
+        CAST(COALESCE(SUM(CASE WHEN v."fecha" >= ${desdeAnho} THEN v."montoVtaNetaGua" END), 0) AS REAL)
+          AS "montoUltimoAnho",
+        COUNT(DISTINCT v."nroDoc") AS "compras",
+        MAX(v."vendedor") AS "vendedor",
+        MAX(v."ciudad") AS "ciudad"
+      FROM "Venta" v
+      WHERE ${whereGlobal} AND v."codCliente" IS NOT NULL
+      GROUP BY v."codCliente"
+    )
+    WHERE "ultimaCompra" < ${corte}
+    ORDER BY "montoUltimoAnho" DESC, "diasSinComprar" DESC
+    LIMIT ${LIMITE_DETALLE + 1}
+  `);
+
+  const total = await contarClientesSinCompras(prisma, referencia, dias, filtros);
+
+  const filas: FilaDetalle[] = rows.slice(0, LIMITE_DETALLE).map((r) => ({
+    nombre: r.nombre ?? "—",
+    ruc: r.ruc,
+    diasSinComprar: toNumber(r.diasSinComprar),
+    ultimaCompra: r.ultimaCompra?.slice(0, 10) ?? null,
+    montoUltimoAnho: toNumber(r.montoUltimoAnho),
+    compras: toNumber(r.compras),
+    vendedor: r.vendedor,
+    ciudad: r.ciudad,
+  }));
+
+  return { filas, total };
+}
+
+export function esClaveAlerta(clave: string): clave is (typeof CLAVES)[number] {
+  return (CLAVES as string[]).includes(clave);
+}
+
+/** Filas que explican una alerta, con las mismas ventanas y filtros del contador. */
+export async function obtenerDetalleAlerta(
+  prisma: Cliente,
+  clave: (typeof CLAVES)[number],
+  filtros: Filtros,
+): Promise<DetalleAlerta> {
+  const referencia = await fechaReferencia(prisma, filtros);
+  const vacio: DetalleAlerta = {
+    clave,
+    titulo: BASE[clave].titulo,
+    detalle: "sin ventas cargadas",
+    columnas: clave === "clientesSinCompras" ? COLUMNAS_CLIENTES : COLUMNAS_VARIACION,
+    filas: [],
+    total: 0,
+  };
+  if (!referencia) return vacio;
+
+  const { actual, previo, detalleMes } = ventana(referencia);
+
+  if (clave === "clientesSinCompras") {
+    const { filas, total } = await detalleClientesSinCompras(
+      prisma,
+      referencia,
+      DIAS_SIN_COMPRAS,
+      filtros,
+    );
+    return {
+      ...vacio,
+      detalle: `más de ${DIAS_SIN_COMPRAS} días sin compras · al ${referencia}`,
+      filas,
+      total,
+    };
+  }
+
+  const columna = clave === "vendedoresEnCaida" ? "vendedor" : "codProducto";
+  const direccion = clave === "productosEnCrecimiento" ? "crecimiento" : "caida";
+  const { filas, total } = await detalleVariacion(
+    prisma,
+    columna,
+    direccion,
+    actual,
+    previo,
+    filtros,
+  );
+
+  return {
+    ...vacio,
+    columnas:
+      clave === "vendedoresEnCaida"
+        ? COLUMNAS_VARIACION.map((c) => (c.clave === "nombre" ? { ...c, titulo: "Vendedor" } : c))
+        : COLUMNAS_VARIACION.map((c) => (c.clave === "nombre" ? { ...c, titulo: "Producto" } : c)),
+    detalle: detalleMes,
+    filas,
+    total,
+  };
 }
