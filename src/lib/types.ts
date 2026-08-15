@@ -54,12 +54,60 @@ export type Kpis = {
   margenPorc: number;
 };
 
+export type EstadoKpi = "ok" | "parcial" | "sin-datos" | "sin-configurar";
+
+export type Comparativo =
+  | {
+      tipo: "delta";
+      unidad: "pct" | "pp";
+      pct: number;
+      valorBase: number;
+      base: string;
+    }
+  | { tipo: "no-disponible"; motivo: string };
+
+export type ResumenKpi = {
+  clave: string;
+  titulo: string;
+  formato: "moneda" | "numero" | "porcentaje";
+  valor: number | null;
+  estado: EstadoKpi;
+  periodo: string;
+  comparativo: Comparativo;
+  accion?: { texto: string; href: string };
+};
+
+export type ResumenData = {
+  referencia: string | null;
+  primerDato: string | null;
+  kpis: ResumenKpi[];
+};
+
 export type SeriePunto = { label: string; valor: number };
 export type RankingItem = { nombre: string; valor: number; participacion: number };
+
+/** Un dia del mes con el valor del mes vigente y el del mes anterior (0 si no hubo ventas). */
+export type PuntoComparativo = { dia: number; label: string; actual: number; anterior: number };
+
+export type ComparativoMensual = {
+  /** yyyy-mm del mes vigente y del anterior; "" si no hay datos. */
+  mesActual: string;
+  mesAnterior: string;
+  puntos: PuntoComparativo[];
+};
+
+/** Los 12 meses del anho de referencia; 0 en los meses sin ventas. */
+export type SerieAnual = {
+  /** anho de la serie; 0 si no hay datos. */
+  anho: number;
+  puntos: SeriePunto[];
+};
 
 export type DashboardData = {
   kpis: Kpis;
   ventasPorDia: SeriePunto[];
+  ventasComparativoMensual: ComparativoMensual;
+  ventasPorMes: SerieAnual;
   ventasPorVendedor: RankingItem[];
   ventasPorCiudad: RankingItem[];
   ventasPorCanal: RankingItem[];

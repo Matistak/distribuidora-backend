@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../server.js";
 import { obtenerDashboard } from "../services/dashboardService.js";
+import { obtenerResumen } from "../services/resumenService.js";
 import type { Filtros } from "../lib/types.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
@@ -20,6 +21,23 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
     const filtros: Filtros = { cliente, vendedor, canal, ciudad, zona };
     const data = await obtenerDashboard(prisma, desde, hasta, filtros);
+
+    return reply.send(data);
+  });
+
+  app.get<{
+    Querystring: {
+      cliente?: string;
+      vendedor?: string;
+      canal?: string;
+      ciudad?: string;
+      zona?: string;
+    };
+  }>("/api/dashboard/resumen", async (req, reply) => {
+    const { cliente, vendedor, canal, ciudad, zona } = req.query;
+
+    const filtros: Filtros = { cliente, vendedor, canal, ciudad, zona };
+    const data = await obtenerResumen(prisma, filtros);
 
     return reply.send(data);
   });

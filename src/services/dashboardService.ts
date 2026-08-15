@@ -1,5 +1,20 @@
 import { Prisma, PrismaClient } from "@prisma/client";
-import type { DashboardData, Filtros } from "../lib/types.js";
+import type { ComparativoMensual, DashboardData, Filtros, SerieAnual } from "../lib/types.js";
+
+const MESES_CORTOS = [
+  "Ene",
+  "Feb",
+  "Mar",
+  "Abr",
+  "May",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dic",
+];
 
 const toNumber = (value: number | bigint | null | undefined) =>
   Number(value ?? 0);
@@ -55,6 +70,86 @@ export function whereClausula(
 
   if (conds.length === 0) return Prisma.sql`TRUE`;
   return Prisma.join(conds, " AND ");
+}
+
+const diasDelMes = (anho: number, mes: number) => new Date(Date.UTC(anho, mes, 0)).getUTCDate();
+const claveMes = (anho: number, mes: number) => `${anho}-${String(mes).padStart(2, "0")}`;
+
+/**
+ * Serie diaria del mes vigente (el del ultimo dia con datos del periodo filtrado)
+ * contra el mes anterior. Los dias sin ventas van en 0 en ambas series para que
+ * las lineas nunca se corten. Ignora el filtro de fechas: si no, el mes anterior
+ * quedaria fuera del rango consultado.
+ */
+async function obtenerComparativoMensual(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  filtros: Filtros,
+  referencia: string,
+): Promise<ComparativoMensual> {
+  if (!referencia) return { mesActual: "", mesAnterior: "", puntos: [] };
+
+  const anho = Number(referencia.slice(0, 4));
+  const mes = Number(referencia.slice(5, 7));
+  const anhoPrev = mes === 1 ? anho - 1 : anho;
+  const mesPrev = mes === 1 ? 12 : mes - 1;
+  const whereSinFechas = whereClausula("", "", filtros);
+
+  const porMes = async (a: number, m: number) => {
+    const rows = await prisma.$queryRaw<SerieRaw[]>(Prisma.sql`
+      SELECT CAST(v."dia" AS TEXT) AS label, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor
+      FROM "Venta" v
+      WHERE ${whereSinFechas} AND v."anho" = ${a} AND v."mes" = ${m}
+      GROUP BY v."dia"
+    `);
+    return new Map(rows.map((r) => [Number(r.label), toNumber(r.valor)]));
+  };
+
+  const [actual, anterior] = await Promise.all([porMes(anho, mes), porMes(anhoPrev, mesPrev)]);
+  const dias = Math.max(diasDelMes(anho, mes), diasDelMes(anhoPrev, mesPrev));
+
+  return {
+    mesActual: claveMes(anho, mes),
+    mesAnterior: claveMes(anhoPrev, mesPrev),
+    puntos: Array.from({ length: dias }, (_, i) => {
+      const dia = i + 1;
+      return {
+        dia,
+        label: String(dia),
+        actual: actual.get(dia) ?? 0,
+        anterior: anterior.get(dia) ?? 0,
+      };
+    }),
+  };
+}
+
+/**
+ * Serie de los 12 meses del anho de referencia (el del ultimo dia con datos del
+ * periodo filtrado). Los meses sin ventas van en 0. Ignora el filtro de fechas
+ * para que el anho completo se vea aunque el rango sea parcial.
+ */
+async function obtenerSerieAnual(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  filtros: Filtros,
+  referencia: string,
+): Promise<SerieAnual> {
+  const vacia = MESES_CORTOS.map((label) => ({ label, valor: 0 }));
+  if (!referencia) return { anho: 0, puntos: vacia };
+
+  const anho = Number(referencia.slice(0, 4));
+  const whereSinFechas = whereClausula("", "", filtros);
+
+  const rows = await prisma.$queryRaw<SerieRaw[]>(Prisma.sql`
+    SELECT CAST(v."mes" AS TEXT) AS label, CAST(SUM(v."montoVtaNetaGua") AS REAL) AS valor
+    FROM "Venta" v
+    WHERE ${whereSinFechas} AND v."anho" = ${anho}
+    GROUP BY v."mes"
+  `);
+  const porMes = new Map(rows.map((r) => [Number(r.label), toNumber(r.valor)]));
+
+  return {
+    anho,
+    puntos: MESES_CORTOS.map((label, i) => ({ label, valor: porMes.get(i + 1) ?? 0 })),
+  };
 }
 
 export async function obtenerDashboard(
@@ -173,6 +268,12 @@ export async function obtenerDashboard(
     `),
   ]);
 
+  const referencia = toIsoDate(kpiRow?.periodoHasta);
+  const [comparativo, serieAnual] = await Promise.all([
+    obtenerComparativoMensual(prisma, filtros, referencia),
+    obtenerSerieAnual(prisma, filtros, referencia),
+  ]);
+
   const serie = (rows: SerieRaw[]) =>
     rows.map((row) => ({
       label: String(row.label),
@@ -198,6 +299,8 @@ export async function obtenerDashboard(
       margenPorc,
     },
     ventasPorDia: serie(ventasPorDia),
+    ventasComparativoMensual: comparativo,
+    ventasPorMes: serieAnual,
     ventasPorVendedor: ranking(ventasPorVendedor),
     ventasPorCiudad: ranking(ventasPorCiudad),
     ventasPorCanal: ranking(ventasPorCanal),
