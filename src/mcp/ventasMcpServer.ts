@@ -3,12 +3,17 @@ import { existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import {
+  alertasVentas,
+  CATALOGOS_FILTRO,
   compararPeriodos,
   ConsultaVentasError,
+  detalleAlertaVentas,
   filtrosSchema,
+  RANKING_DIMENSIONES,
   rankingVentas,
   resumenVentas,
   validarRanking,
+  valoresFiltro,
   ventasPorPeriodo,
 } from "../services/ventasConsultas.js";
 import { isPackaged, resolvePrismaEnv } from "../lib/appPaths.js";
@@ -109,51 +114,112 @@ const tools: McpToolDefinition[] = [
     },
   },
   {
-    name: "ventas_por_vendedor",
-    description: "Ranking de venta neta por vendedor con participacion, para un periodo y filtros opcionales.",
+    name: "ranking_ventas",
+    description:
+      "Ranking de venta neta con participacion por la dimension indicada en 'por': vendedor, producto, ciudad, canal, marca o cliente. Para un periodo y filtros opcionales.",
     inputSchema: {
       ...filtrosJsonSchema,
-      properties: { ...filtrosJsonSchema.properties, limite: { type: "number", description: "Maximo de filas (default 10, maximo 50)." } },
+      properties: {
+        ...filtrosJsonSchema.properties,
+        por: {
+          type: "string",
+          enum: RANKING_DIMENSIONES,
+          description: "Dimension por la que se agrupa el ranking.",
+        },
+        limite: { type: "number", description: "Maximo de filas (default 10, maximo 50)." },
+      },
+      required: ["por"],
     },
     handler: async (args) => {
       try {
-        const schema = filtrosSchema.extend({ limite: z.number().optional() });
+        const schema = filtrosSchema.extend({ por: z.string(), limite: z.number().optional() });
         const input = schema.parse(args);
-        return { text: await rankingVentas(prisma, "vendedor", input) };
+        return { text: await rankingVentas(prisma, validarRanking(input.por), input) };
       } catch (error) {
         return { text: alTexto(error), isError: true };
       }
     },
   },
   {
-    name: "ventas_por_producto",
-    description: "Ranking de venta neta por producto con participacion, para un periodo y filtros opcionales.",
+    name: "valores_filtro",
+    description:
+      "Lista los valores reales que puede tomar un filtro (cliente, vendedor, canal, ciudad, zona, marca, producto). Usalo antes de filtrar: vendedor, canal, ciudad y zona se comparan de forma exacta.",
     inputSchema: {
-      ...filtrosJsonSchema,
-      properties: { ...filtrosJsonSchema.properties, limite: { type: "number", description: "Maximo de filas (default 10, maximo 50)." } },
+      type: "object",
+      properties: {
+        tipo: {
+          type: "string",
+          enum: CATALOGOS_FILTRO,
+          description: "Catalogo que se quiere listar.",
+        },
+        q: { type: "string", description: "Texto que debe contener el valor (busqueda parcial)." },
+        limite: { type: "number", description: "Maximo de valores (default 25, maximo 200)." },
+      },
+      required: ["tipo"],
     },
     handler: async (args) => {
       try {
-        const schema = filtrosSchema.extend({ limite: z.number().optional() });
-        const input = schema.parse(args);
-        return { text: await rankingVentas(prisma, "producto", input) };
+        const schema = z.object({
+          tipo: z.string(),
+          q: z.string().optional(),
+          limite: z.number().optional(),
+        });
+        return { text: await valoresFiltro(prisma, schema.parse(args)) };
       } catch (error) {
         return { text: alTexto(error), isError: true };
       }
     },
   },
   {
-    name: "ventas_por_ciudad",
-    description: "Ranking de venta neta por ciudad con participacion, para un periodo y filtros opcionales.",
+    name: "alertas_ventas",
+    description:
+      "Alertas del mes vigente: vendedores en caida, clientes sin compras, productos en caida y en crecimiento. Ignora el rango de fechas (siempre usa el ultimo mes con datos).",
     inputSchema: {
-      ...filtrosJsonSchema,
-      properties: { ...filtrosJsonSchema.properties, limite: { type: "number", description: "Maximo de filas (default 10, maximo 50)." } },
+      type: "object",
+      properties: {
+        cliente: filtrosJsonSchema.properties["cliente"],
+        vendedor: filtrosJsonSchema.properties["vendedor"],
+        canal: filtrosJsonSchema.properties["canal"],
+        ciudad: filtrosJsonSchema.properties["ciudad"],
+        zona: filtrosJsonSchema.properties["zona"],
+      },
     },
     handler: async (args) => {
       try {
-        const schema = filtrosSchema.extend({ limite: z.number().optional() });
-        const input = schema.parse(args);
-        return { text: await rankingVentas(prisma, "ciudad", input) };
+        return { text: await alertasVentas(prisma, filtrosSchema.parse(args)) };
+      } catch (error) {
+        return { text: alTexto(error), isError: true };
+      }
+    },
+  },
+  {
+    name: "detalle_alerta",
+    description:
+      "Filas que explican una alerta de alertas_ventas: cuales son los vendedores, productos o clientes detras del numero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        alerta: {
+          type: "string",
+          enum: ["vendedoresEnCaida", "clientesSinCompras", "productosEnCaida", "productosEnCrecimiento"],
+          description: "Clave de la alerta a detallar.",
+        },
+        cliente: filtrosJsonSchema.properties["cliente"],
+        vendedor: filtrosJsonSchema.properties["vendedor"],
+        canal: filtrosJsonSchema.properties["canal"],
+        ciudad: filtrosJsonSchema.properties["ciudad"],
+        zona: filtrosJsonSchema.properties["zona"],
+        limite: { type: "number", description: "Maximo de filas (default 10, maximo 50)." },
+      },
+      required: ["alerta"],
+    },
+    handler: async (args) => {
+      try {
+        const schema = filtrosSchema.extend({
+          alerta: z.string(),
+          limite: z.number().optional(),
+        });
+        return { text: await detalleAlertaVentas(prisma, schema.parse(args)) };
       } catch (error) {
         return { text: alTexto(error), isError: true };
       }
@@ -202,9 +268,16 @@ const tools: McpToolDefinition[] = [
 const INSTRUCCIONES = [
   "Servidor de consultas de ventas (solo lectura) de una distribuidora.",
   "Fechas en formato YYYY-MM-DD; los rangos son inclusive y como maximo 10 anios.",
-  "Herramientas: resumen_ventas, ventas_por_periodo, ventas_por_vendedor,",
-  "ventas_por_producto, ventas_por_ciudad, comparar_periodos.",
-  "Los montos estan en quetzales.",
+  `Herramientas: ${tools.map((tool) => tool.name).join(", ")}.`,
+  "Sin \"desde\"/\"hasta\" la consulta cubre toda la historia cargada:",
+  "no inventes un rango amplio para eso, omiti las fechas.",
+  "Los montos estan en guaranies (PYG) y con formato es-PY (miles con punto).",
+  "El guarani no usa decimales: no les agregues centavos ni el simbolo Q.",
+  "Los filtros vendedor, canal, ciudad y zona se comparan de forma exacta:",
+  "si no estas seguro del nombre, usa valores_filtro antes de consultar.",
+  "El filtro cliente admite coincidencia parcial.",
+  "alertas_ventas y detalle_alerta siempre miran el ultimo mes con datos,",
+  "sin importar el rango de fechas de la conversacion.",
   "Cuando una consulta no devuelva resultados, decilo con claridad;",
   "no inventes cifras ni supongas datos fuera del rango consultado.",
 ].join("\n");

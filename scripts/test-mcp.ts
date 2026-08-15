@@ -85,11 +85,70 @@ try {
     }),
   );
 
+  for (const por of ["vendedor", "producto", "ciudad", "canal", "marca", "cliente"]) {
+    mostrar(
+      `ranking_ventas por ${por} 2026-07 limite 3`,
+      await request("tools/call", {
+        name: "ranking_ventas",
+        arguments: { por, desde: "2026-07-01", hasta: "2026-07-15", limite: 3 },
+      }),
+    );
+  }
+
   mostrar(
-    "ventas_por_vendedor 2026-07 limite 3",
+    "ranking_ventas dimension invalida",
     await request("tools/call", {
-      name: "ventas_por_vendedor",
-      arguments: { desde: "2026-07-01", hasta: "2026-07-15", limite: 3 },
+      name: "ranking_ventas",
+      arguments: { por: "planeta" },
+    }),
+  );
+
+  mostrar(
+    "valores_filtro vendedor",
+    await request("tools/call", {
+      name: "valores_filtro",
+      arguments: { tipo: "vendedor", limite: 5 },
+    }),
+  );
+
+  mostrar(
+    "valores_filtro cliente con q",
+    await request("tools/call", {
+      name: "valores_filtro",
+      arguments: { tipo: "cliente", q: "a", limite: 5 },
+    }),
+  );
+
+  mostrar(
+    "valores_filtro catalogo invalido",
+    await request("tools/call", {
+      name: "valores_filtro",
+      arguments: { tipo: "planeta" },
+    }),
+  );
+
+  mostrar("alertas_ventas", await request("tools/call", { name: "alertas_ventas", arguments: {} }));
+
+  for (const alerta of [
+    "vendedoresEnCaida",
+    "clientesSinCompras",
+    "productosEnCaida",
+    "productosEnCrecimiento",
+  ]) {
+    mostrar(
+      `detalle_alerta ${alerta}`,
+      await request("tools/call", {
+        name: "detalle_alerta",
+        arguments: { alerta, limite: 3 },
+      }),
+    );
+  }
+
+  mostrar(
+    "detalle_alerta clave invalida",
+    await request("tools/call", {
+      name: "detalle_alerta",
+      arguments: { alerta: "todoMal" },
     }),
   );
 
@@ -122,6 +181,21 @@ try {
     await request("tools/call", {
       name: "ventas_por_periodo",
       arguments: { granularidad: "semana" },
+    }),
+  );
+
+  // Verifica de paso que la variacion se calcule: depende de re-parsear el
+  // monto ya formateado en es-PY.
+  mostrar(
+    "comparar_periodos jun vs jul 2026",
+    await request("tools/call", {
+      name: "comparar_periodos",
+      arguments: {
+        periodo1_desde: "2026-06-01",
+        periodo1_hasta: "2026-06-30",
+        periodo2_desde: "2026-07-01",
+        periodo2_hasta: "2026-07-31",
+      },
     }),
   );
 
