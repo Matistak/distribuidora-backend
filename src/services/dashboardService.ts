@@ -200,9 +200,6 @@ export async function obtenerDashboard(
     costoTotal: toNumber(kpiRow?.costoTotal),
     notasCredito: toNumber(kpiRow?.notasCredito),
   };
-  const ticketPromedio = kpi.cantidadFacturas
-    ? kpi.ventaNeta / kpi.cantidadFacturas
-    : 0;
   const margenPorc = kpi.ventaNeta
     ? (kpi.ventaNeta - kpi.costoTotal) / kpi.ventaNeta
     : 0;
@@ -290,7 +287,6 @@ export async function obtenerDashboard(
     kpis: {
       ventaBruta: kpi.ventaBruta,
       ventaNeta: kpi.ventaNeta,
-      ticketPromedio,
       cantidadFacturas: kpi.cantidadFacturas,
       unidadesVendidas: kpi.unidadesVendidas,
       clientesActivos: kpi.clientesActivos,

@@ -167,7 +167,6 @@ function deltaPuntos(
 }
 
 const margen = (a: Agregado) => (a.ventaNeta ? (a.ventaNeta - a.costo) / a.ventaNeta : 0);
-const ticket = (a: Agregado) => (a.facturas ? a.ventaNeta / a.facturas : 0);
 
 export async function obtenerResumen(
   prisma: Cliente,
@@ -317,14 +316,6 @@ export async function obtenerResumen(
       ...delMes(actualMes.facturas, previoMes.facturas),
     },
     {
-      ...BASE.ticketPromedio,
-      clave: "ticketPromedio",
-      valor: actualMes.facturas ? ticket(actualMes) : null,
-      estado: actualMes.facturas ? estadoMes : "sin-datos",
-      periodo: periodoMes,
-      comparativo: delta(ticket(actualMes), ticket(previoMes), hayMes, etiquetaTramo),
-    },
-    {
       ...BASE.unidades,
       clave: "unidades",
       valor: actualMes.unidades,
@@ -351,7 +342,6 @@ const BASE = {
   clientesActivos: { titulo: "Clientes activos", formato: "numero" },
   clientesNuevos: { titulo: "Clientes nuevos", formato: "numero" },
   facturas: { titulo: "Facturas", formato: "numero" },
-  ticketPromedio: { titulo: "Ticket promedio", formato: "moneda" },
   unidades: { titulo: "Unidades", formato: "numero" },
   cumplimientoObjetivo: { titulo: "Cumpl. objetivo", formato: "porcentaje" },
 } as const satisfies Record<string, { titulo: string; formato: ResumenKpi["formato"] }>;

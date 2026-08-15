@@ -92,7 +92,6 @@ function mapearRanking(filas: FilaCliente[], ventaNetaTotal: number): ClienteRes
       ventaNeta: neta,
       costo,
       margenPorc: neta ? (neta - costo) / neta : 0,
-      ticketPromedio: facturasCliente ? neta / facturasCliente : 0,
       participacion: ventaNetaTotal ? neta / ventaNetaTotal : 0,
       ultimaCompra,
     };
@@ -101,7 +100,7 @@ function mapearRanking(filas: FilaCliente[], ventaNetaTotal: number): ClienteRes
 
 /**
  * Resumen agregado por cliente (venta neta, facturas, productos, unidades,
- * margen, ticket promedio y participacion) + KPIs globales del periodo.
+ * margen y participacion) + KPIs globales del periodo.
  *
  * `filtros` se aplica al detalle (`data`), mientras que `filtrosKpis` (solo
  * fechas por defecto) alimenta los KPIs y el ranking de la cabecera, para que
@@ -137,7 +136,6 @@ export async function obtenerClientes(
     ventaNeta,
     facturas,
     unidades: toNumber(kpiRow?.unidades),
-    ticketPromedio: facturas ? ventaNeta / facturas : 0,
     margenPorc: ventaNeta ? (ventaNeta - costoTotal) / ventaNeta : 0,
     concentracionTop10: ventaNeta ? concentracionTop10 / ventaNeta : 0,
   };

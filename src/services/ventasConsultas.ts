@@ -179,7 +179,6 @@ export async function resumenVentas(
     `- Clientes activos: ${toNumber(row.clientesActivos).toLocaleString(LOCALE)}`,
     `- Productos distintos: ${toNumber(row.productosDistintos).toLocaleString(LOCALE)}`,
     `- Notas de credito: ${toNumber(row.notasCredito).toLocaleString(LOCALE)}`,
-    `- Ticket promedio: ${formatear(ventaNeta / cantidadFacturas)}`,
     `- Margen: ${redondear(margenPorc * 100).toLocaleString(LOCALE)}%`,
   ];
   if (row.periodoDesde && row.periodoHasta) {

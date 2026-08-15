@@ -75,7 +75,7 @@ const tools: McpToolDefinition[] = [
   {
     name: "resumen_ventas",
     description:
-      "Resumen agregado de ventas (venta bruta, neta, facturas, unidades, clientes, ticket, margen) de un periodo con filtros opcionales.",
+      "Resumen agregado de ventas (venta bruta, neta, facturas, unidades, clientes, margen) de un periodo con filtros opcionales.",
     inputSchema: filtrosJsonSchema,
     handler: async (args) => {
       try {
@@ -228,7 +228,7 @@ const tools: McpToolDefinition[] = [
   {
     name: "comparar_periodos",
     description:
-      "Compara dos periodos de fechas (venta neta, facturas, ticket) e indica la variacion. Requiere periodo1_desde/hasta y periodo2_desde/hasta.",
+      "Compara dos periodos de fechas (venta neta, facturas) e indica la variacion. Requiere periodo1_desde/hasta y periodo2_desde/hasta.",
     inputSchema: {
       ...filtrosJsonSchema,
       properties: {

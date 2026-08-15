@@ -42,10 +42,32 @@ export type VentaRow = {
   longitud: number | null;
 };
 
+/** Un comprobante agrupado a partir de sus líneas de venta. */
+export type ComprobanteResumen = {
+  nroDoc: string;
+  nroComprobante: number;
+  tipoDoc: string | null;
+  fecha: string;
+  razonSocial: string | null;
+  ruc: string | null;
+  vendedor: string | null;
+  canal: string | null;
+  ciudad: string | null;
+  cantidadLineas: number;
+  unidades: number;
+  ventaBruta: number;
+  ventaNeta: number;
+  esNotaCredito: boolean;
+};
+
+export type ComprobanteDetalle = {
+  resumen: ComprobanteResumen;
+  lineas: VentaRow[];
+};
+
 export type Kpis = {
   ventaBruta: number;
   ventaNeta: number;
-  ticketPromedio: number;
   cantidadFacturas: number;
   unidadesVendidas: number;
   clientesActivos: number;
@@ -165,6 +187,8 @@ export type Filtros = {
   canal?: string;
   ciudad?: string;
   zona?: string;
+  /** Tipo de comprobante exacto: "FACTURA EMITIDA", "NOTA DE CREDITO", ... */
+  tipoDoc?: string;
 };
 
 export type OpcionesFiltro = {
@@ -173,6 +197,7 @@ export type OpcionesFiltro = {
   canales: string[];
   ciudades: string[];
   zonas: string[];
+  tiposDoc: string[];
 };
 
 export type VendedorResumen = {
@@ -184,7 +209,6 @@ export type VendedorResumen = {
   ventaNeta: number;
   costo: number;
   margenPorc: number;
-  ticketPromedio: number;
   participacion: number;
   ultimaVenta: string;
 };
@@ -194,7 +218,6 @@ export type VendedoresKpis = {
   ventaNeta: number;
   facturas: number;
   unidades: number;
-  ticketPromedio: number;
   margenPorc: number;
   concentracionTop10: number;
 };
@@ -219,7 +242,6 @@ export type ClienteResumen = {
   ventaNeta: number;
   costo: number;
   margenPorc: number;
-  ticketPromedio: number;
   participacion: number;
   ultimaCompra: string;
 };
@@ -229,7 +251,6 @@ export type ClientesKpis = {
   ventaNeta: number;
   facturas: number;
   unidades: number;
-  ticketPromedio: number;
   margenPorc: number;
   concentracionTop10: number;
 };
