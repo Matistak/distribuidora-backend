@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../server.js";
 import { obtenerDashboard } from "../services/dashboardService.js";
 import { obtenerResumen } from "../services/resumenService.js";
+import { obtenerAlertas } from "../services/alertasService.js";
 import type { Filtros } from "../lib/types.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
@@ -38,6 +39,24 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
     const filtros: Filtros = { cliente, vendedor, canal, ciudad, zona };
     const data = await obtenerResumen(prisma, filtros);
+
+    return reply.send(data);
+  });
+
+  /** GET /api/dashboard/alertas — señales de caída/crecimiento del mes vigente */
+  app.get<{
+    Querystring: {
+      cliente?: string;
+      vendedor?: string;
+      canal?: string;
+      ciudad?: string;
+      zona?: string;
+    };
+  }>("/api/dashboard/alertas", async (req, reply) => {
+    const { cliente, vendedor, canal, ciudad, zona } = req.query;
+
+    const filtros: Filtros = { cliente, vendedor, canal, ciudad, zona };
+    const data = await obtenerAlertas(prisma, filtros);
 
     return reply.send(data);
   });

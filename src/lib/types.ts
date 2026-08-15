@@ -83,6 +83,25 @@ export type ResumenData = {
   kpis: ResumenKpi[];
 };
 
+export type AlertaTono = "critico" | "advertencia" | "positivo";
+
+export type Alerta = {
+  clave: string;
+  titulo: string;
+  /** Sustantivo de lo que se cuenta: "vendedores", "clientes", "productos". */
+  unidad: string;
+  valor: number | null;
+  estado: EstadoKpi;
+  /** Contexto al pie de la tarjeta: base de comparacion o umbral aplicado. */
+  detalle: string;
+  tono: AlertaTono;
+};
+
+export type AlertasData = {
+  referencia: string | null;
+  alertas: Alerta[];
+};
+
 export type SeriePunto = { label: string; valor: number };
 export type RankingItem = { nombre: string; valor: number; participacion: number };
 
