@@ -58,6 +58,15 @@ function generarSeedVacia() {
     );
     copyFileSync(tempSeed, join(distDir, "distribuidora.db"));
     console.log("✓ Generada DB semilla VACIA (solo schema) como distribuidora.db");
+
+    // La app de Tauri empaqueta la semilla como recurso. Al regenerarla en cada
+    // build nos aseguramos de que el bundle arranque siempre con tablas vacías y
+    // el schema actualizado, sin depender de un archivo .db versionado en git.
+    const frontResourcesDir = join(root, "..", "distribuidora-front", "src-tauri", "resources");
+    if (existsSync(frontResourcesDir)) {
+      copyFileSync(tempSeed, join(frontResourcesDir, "distribuidora.db"));
+      console.log("✓ Copiada semilla vacía a distribuidora-front/src-tauri/resources/distribuidora.db");
+    }
   } catch (error) {
     console.warn("✗ No se pudo generar la DB semilla vacia:", error);
   } finally {

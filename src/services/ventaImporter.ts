@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import type { UploadFilaOmitida, VentaRow } from "../lib/types.js";
 import { claveVentaHash } from "./claveVenta.js";
 
-const INSERT_BATCH_SIZE = 20;
+const INSERT_BATCH_SIZE = 100;
 /** Cantidad máxima de filas omitidas que viajan con detalle completo en la respuesta. */
 export const LIMITE_DETALLE_OMITIDAS = 200;
 

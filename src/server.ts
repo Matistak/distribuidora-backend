@@ -30,10 +30,12 @@ async function ensureImportSchema() {
   }
 
   // Prisma guarda los DateTime de SQLite como epoch en milisegundos. Convertimos
-  // esos valores heredados para que fecha quede siempre como YYYY-MM-DD.
+  // esos valores heredados al texto ISO-8601 completo que usa el importador
+  // (YYYY-MM-DDTHH:MM:SS.sssZ), conservando hora, minuto, segundo y ms.
   await prisma.$executeRaw`
     UPDATE "Venta"
-    SET "fecha" = strftime('%Y-%m-%d', CAST("fecha" AS INTEGER) / 1000, 'unixepoch')
+    SET "fecha" = strftime('%Y-%m-%dT%H:%M:%f', CAST("fecha" AS INTEGER) / 1000.0, 'unixepoch')
+                  || 'Z'
     WHERE typeof("fecha") IN ('integer', 'real')
        OR (
          typeof("fecha") = 'text'

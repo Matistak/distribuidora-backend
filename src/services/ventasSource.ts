@@ -124,23 +124,26 @@ function toAnhoMesKey(valor: string, campo: string): number {
 /**
  * La vista de origen no trae `dia`, así que se calcula desde `fecha`. Para no
  * depender de la zona horaria del driver, la fecha viaja como texto resuelto en
- * el propio motor y de ahí salen anho/mes/dia.
+ * el propio motor y de ahí salen anho/mes/dia. Se trae la marca de tiempo
+ * completa (hora, minuto, segundo y milisegundos) para guardarla tal cual en
+ * SQLite; si el origen es sólo `date`, el cast rellena con 00:00:00.000.
  */
 const FECHA_ISO_ALIAS = "__fecha_iso";
-const FECHA_ISO_SQL = `to_char("fecha"::date, 'YYYY-MM-DD') AS "${FECHA_ISO_ALIAS}"`;
+const FECHA_ISO_SQL =
+  `to_char("fecha"::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "${FECHA_ISO_ALIAS}"`;
 const COLUMNAS_DERIVADAS = ["dia"] as const;
 
 function normalizeRecord(row: Record<string, unknown>): Record<string, unknown> {
   const value = Object.fromEntries(
     Object.entries(row).map(([key, valor]) => [
       normalizeHeader(key),
-      valor instanceof Date ? valor.toISOString().slice(0, 10) : valor,
+      valor instanceof Date ? valor.toISOString() : valor,
     ]),
   );
 
   const iso = value[FECHA_ISO_ALIAS];
   delete value[FECHA_ISO_ALIAS];
-  if (typeof iso === "string" && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+  if (typeof iso === "string" && /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/.test(iso)) {
     value["fecha"] = iso;
     value["dia"] ??= Number(iso.slice(8, 10));
     value["anho"] ??= Number(iso.slice(0, 4));

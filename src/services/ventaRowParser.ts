@@ -93,7 +93,19 @@ function numberValue(value: unknown, column: string, rowNumber: number): number 
   throw new RowValidationError(`Fila ${rowNumber}: ${column} debe ser numérico`);
 }
 
-function dateFromParts(year: number, month: number, day: number, rowNumber: number): string {
+/**
+ * `fecha` se guarda como marca de tiempo ISO-8601 completa en UTC
+ * (`YYYY-MM-DDTHH:MM:SS.sssZ`) para no perder la hora del origen. El formato
+ * ordena igual que `YYYY-MM-DD` byte a byte, así los filtros por rango
+ * (`>= desde` / `< date(hasta, '+1 day')`) y los índices siguen funcionando.
+ */
+function dateFromParts(
+  year: number,
+  month: number,
+  day: number,
+  rowNumber: number,
+  msDelDia = 0,
+): string {
   if (!Number.isInteger(year) || year < 1900 || year > 2200) {
     throw new RowValidationError(`Fila ${rowNumber}: anho no es válido`);
   }
@@ -103,6 +115,9 @@ function dateFromParts(year: number, month: number, day: number, rowNumber: numb
   if (!Number.isInteger(day) || day < 1 || day > 31) {
     throw new RowValidationError(`Fila ${rowNumber}: dia no es válido`);
   }
+  if (!Number.isInteger(msDelDia) || msDelDia < 0 || msDelDia >= 86_400_000) {
+    throw new RowValidationError(`Fila ${rowNumber}: hora no es válida`);
+  }
   const date = new Date(Date.UTC(year, month - 1, day));
   if (
     date.getUTCFullYear() !== year ||
@@ -111,7 +126,37 @@ function dateFromParts(year: number, month: number, day: number, rowNumber: numb
   ) {
     throw new RowValidationError(`Fila ${rowNumber}: fecha no es válida`);
   }
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() + msDelDia).toISOString();
+}
+
+/** Milisegundos transcurridos del día para una hora ya validada por regex. */
+function msDesdeHora(hora: string, minuto: string, segundo?: string, fraccion?: string): number {
+  const h = Number(hora);
+  const m = Number(minuto);
+  const s = segundo === undefined ? 0 : Number(segundo);
+  const ms = fraccion === undefined ? 0 : Math.round(Number(`0.${fraccion}`) * 1000);
+  if (h > 23 || m > 59 || s > 59) return -1;
+  return ((h * 60 + m) * 60 + s) * 1000 + ms;
+}
+
+/** `T10:32:05.120Z`, ` 10:32:05`, ` 10:32 a. m.`... lo que venga después de la fecha. */
+const HORA_RE = /^[T\s]+(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,3})\d*)?)?\s*(a|p)?\.?\s*m?\.?/i;
+
+function horaDesdeResto(resto: string, rowNumber: number): number {
+  const limpio = resto.trim();
+  if (!limpio) return 0;
+  const match = HORA_RE.exec(resto);
+  if (!match) throw new RowValidationError(`Fila ${rowNumber}: hora no es válida`);
+  const [, hora, minuto, segundo, fraccion, meridiano] = match;
+  let horas = Number(hora);
+  if (meridiano) {
+    if (horas < 1 || horas > 12) throw new RowValidationError(`Fila ${rowNumber}: hora no es válida`);
+    if (meridiano.toLowerCase() === "p") horas = horas === 12 ? 12 : horas + 12;
+    else if (horas === 12) horas = 0;
+  }
+  const total = msDesdeHora(String(horas), minuto, segundo, fraccion);
+  if (total < 0) throw new RowValidationError(`Fila ${rowNumber}: hora no es válida`);
+  return total;
 }
 
 function dateValue(
@@ -121,16 +166,37 @@ function dateValue(
   day: number,
   rowNumber: number,
 ): string {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new RowValidationError(`Fila ${rowNumber}: fecha no es válida`);
+    }
+    return dateFromParts(
+      value.getUTCFullYear(),
+      value.getUTCMonth() + 1,
+      value.getUTCDate(),
+      rowNumber,
+      value.getTime() - Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+    );
+  }
+
   if (typeof value === "number") {
     if (!Number.isFinite(value) || value <= 0) {
       throw new RowValidationError(`Fila ${rowNumber}: fecha no es válida`);
     }
+    // El serial de Excel trae la hora en la parte fraccionaria: se conserva.
     const date = new Date(Math.round((value - 25569) * 86400 * 1000));
     if (Number.isNaN(date.getTime())) {
       throw new RowValidationError(`Fila ${rowNumber}: fecha no es válida`);
     }
+    const inicioDelDia = Date.UTC(
+      date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(),
+    );
     return dateFromParts(
-      date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), rowNumber,
+      date.getUTCFullYear(),
+      date.getUTCMonth() + 1,
+      date.getUTCDate(),
+      rowNumber,
+      date.getTime() - inicioDelDia,
     );
   }
 
@@ -139,13 +205,21 @@ function dateValue(
   const isoMatch = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(source);
   if (isoMatch) {
     return dateFromParts(
-      Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]), rowNumber,
+      Number(isoMatch[1]),
+      Number(isoMatch[2]),
+      Number(isoMatch[3]),
+      rowNumber,
+      horaDesdeResto(source.slice(isoMatch[0].length), rowNumber),
     );
   }
   const localMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(source);
   if (localMatch) {
     return dateFromParts(
-      Number(localMatch[3]), Number(localMatch[2]), Number(localMatch[1]), rowNumber,
+      Number(localMatch[3]),
+      Number(localMatch[2]),
+      Number(localMatch[1]),
+      rowNumber,
+      horaDesdeResto(source.slice(localMatch[0].length), rowNumber),
     );
   }
   throw new RowValidationError(`Fila ${rowNumber}: fecha no es válida`);

@@ -77,7 +77,7 @@ model Venta {
    * 41 columnas, así líneas legítimas que difieren en cualquier valor se
    * guardan aunque compartan comprobante, producto y montos.
    */
-  claveHash String @default("")
+  claveHash String
 
   cargaId Int
   carga   Carga @relation(fields: [cargaId], references: [id])
