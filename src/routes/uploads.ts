@@ -10,7 +10,12 @@ import {
 } from "../services/ventasSource.js";
 import { insertRows } from "../services/ventaImporter.js";
 import { optimizeSqlite } from "../services/sqlitePerformance.js";
-import type { UploadHistorial, UploadResponse, VentaRow } from "../lib/types.js";
+import type {
+  UploadFilaOmitida,
+  UploadHistorial,
+  UploadResponse,
+  VentaRow,
+} from "../lib/types.js";
 
 const cargaBaseSchema = z.object({
   desde: z.string().regex(/^\d{4}-\d{2}$/, "desde debe tener formato YYYY-MM"),
@@ -19,6 +24,8 @@ const cargaBaseSchema = z.object({
 
 type ParsedCarga = {
   filas: VentaRow[];
+  /** Número de fila de cada elemento de `filas`, para reportar omisiones. */
+  numeros: number[];
   filasTotales: number;
   filasErrores: number;
   errores: UploadResponse["errores"];
@@ -27,6 +34,8 @@ type ParsedCarga = {
 export async function uploadRoutes(app: FastifyInstance) {
   /** Persiste una carga (Excel o base externa) dentro de una sola transacción. */
   async function guardarCarga(origen: string, parsed: ParsedCarga) {
+    let omitidas: UploadFilaOmitida[] = [];
+    let omitidasTruncadas = false;
     const result = await prisma.$transaction(
       async (tx) => {
         const carga = await tx.carga.create({
@@ -37,12 +46,14 @@ export async function uploadRoutes(app: FastifyInstance) {
             estado: "procesando",
           },
         });
-        const filasNuevas = await insertRows(tx, parsed.filas, carga.id);
+        const inserto = await insertRows(tx, parsed.filas, parsed.numeros, carga.id);
+        omitidas = inserto.omitidas;
+        omitidasTruncadas = inserto.omitidasTruncadas;
         return tx.carga.update({
           where: { id: carga.id },
           data: {
-            filasNuevas,
-            filasOmitidas: parsed.filas.length - filasNuevas,
+            filasNuevas: inserto.filasNuevas,
+            filasOmitidas: parsed.filas.length - inserto.filasNuevas,
             estado: parsed.filasErrores > 0 ? "procesado_con_errores" : "procesado",
           },
         });
@@ -65,6 +76,8 @@ export async function uploadRoutes(app: FastifyInstance) {
       filasErrores: result.filasErrores,
       errores: parsed.errores,
       estado: result.estado,
+      omitidas,
+      ...(omitidasTruncadas ? { omitidasTruncadas: true } : {}),
     };
     return respuesta;
   }

@@ -25,6 +25,8 @@ const INTEGER_COLUMNS = new Set([
 
 export type ParsedRows = {
   filas: VentaRow[];
+  /** Número de fila (Excel o base) de cada elemento de `filas`, en el mismo orden. */
+  numeros: number[];
   filasTotales: number;
   filasErrores: number;
   errores: UploadRowError[];
@@ -261,10 +263,12 @@ export function parseVentaRows(
   primeraFila: number,
 ): ParsedRows {
   const filas: VentaRow[] = [];
+  const numeros: number[] = [];
   const errores: UploadRowError[] = [];
   rawRows.forEach((row, index) => {
     try {
       filas.push(parseVentaRow(row, index + primeraFila));
+      numeros.push(index + primeraFila);
     } catch (error) {
       if (error instanceof RowValidationError) {
         errores.push({ fila: index + primeraFila, motivo: error.message });
@@ -273,5 +277,11 @@ export function parseVentaRows(
       throw error;
     }
   });
-  return { filas, filasTotales: rawRows.length, filasErrores: errores.length, errores };
+  return {
+    filas,
+    numeros,
+    filasTotales: rawRows.length,
+    filasErrores: errores.length,
+    errores,
+  };
 }

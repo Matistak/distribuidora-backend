@@ -272,11 +272,30 @@ export type UploadResponse = {
   filasErrores: number;
   errores: UploadRowError[];
   estado: string;
+  /**
+   * Detalle de las filas omitidas (duplicados exactos), con la fila ya
+   * registrada que ocasionó cada omisión. Puede venir corto por límite de
+   * tamaño (ver omitidasTruncadas); el total real siempre está en filasOmitidas.
+   */
+  omitidas?: UploadFilaOmitida[];
+  /** true cuando `omitidas` no incluye todas las filas omitidas. */
+  omitidasTruncadas?: boolean;
 };
 
 export type UploadRowError = {
   fila: number;
   motivo: string;
+};
+
+/** Una fila omitida junto a la fila existente que la ocasionó. */
+export type UploadFilaOmitida = {
+  /** Mismo numerado que `errores`: 2 = primera fila debajo del encabezado. */
+  fila: number;
+  motivo: string;
+  /** La fila que se quiso importar y fue descartada. */
+  nueva: VentaRow;
+  /** La fila ya registrada con el mismo hash; null si no se pudo recuperar. */
+  existente: VentaRow | null;
 };
 
 export type UploadHistorial = {

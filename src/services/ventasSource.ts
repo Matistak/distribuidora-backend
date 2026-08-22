@@ -211,6 +211,7 @@ export async function fetchVentasSource(desde: string, hasta: string): Promise<S
 
   return withClient(config, async (client) => {
     const filas: VentaRow[] = [];
+    const numeros: number[] = [];
     const errores: UploadRowError[] = [];
     let filasTotales = 0;
     let truncado = false;
@@ -239,6 +240,7 @@ export async function fetchVentasSource(desde: string, hasta: string): Promise<S
 
       const parsed = parseVentaRows(rows.map(normalizeRecord), filasTotales + 1);
       filas.push(...parsed.filas);
+      numeros.push(...parsed.numeros);
       errores.push(...parsed.errores);
       filasTotales += rows.length;
       offset += rows.length;
@@ -254,6 +256,7 @@ export async function fetchVentasSource(desde: string, hasta: string): Promise<S
     }
     return {
       filas,
+      numeros,
       filasTotales,
       filasErrores: errores.length,
       errores,

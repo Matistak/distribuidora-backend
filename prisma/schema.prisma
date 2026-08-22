@@ -71,10 +71,18 @@ model Venta {
   latitud           Float?
   longitud          Float?
 
+  /**
+   * SHA-256 de todas las columnas de negocio de la fila (ver claveVenta.ts).
+   * La clave única es este hash: dos filas sólo chocan si son idénticas en las
+   * 41 columnas, así líneas legítimas que difieren en cualquier valor se
+   * guardan aunque compartan comprobante, producto y montos.
+   */
+  claveHash String @default("")
+
   cargaId Int
   carga   Carga @relation(fields: [cargaId], references: [id])
 
-  @@unique([nroDoc, codProducto, nroComprobante])
+  @@unique([claveHash], map: "Venta_clave_hash_key")
   @@index([fecha])
   @@index([fecha(sort: Desc), nroDoc(sort: Asc)])
   @@index([vendedor])
