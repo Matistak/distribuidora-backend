@@ -1,5 +1,6 @@
 import { Client } from "pg";
 import {
+  LIMITE_DETALLE_ERRORES,
   type ParsedRows,
   RowValidationError,
   normalizeHeader,
@@ -214,8 +215,8 @@ export async function fetchVentasSource(desde: string, hasta: string): Promise<S
 
   return withClient(config, async (client) => {
     const filas: VentaRow[] = [];
-    const numeros: number[] = [];
     const errores: UploadRowError[] = [];
+    let filasErrores = 0;
     let filasTotales = 0;
     let truncado = false;
     let offset = 0;
@@ -243,8 +244,9 @@ export async function fetchVentasSource(desde: string, hasta: string): Promise<S
 
       const parsed = parseVentaRows(rows.map(normalizeRecord), filasTotales + 1);
       filas.push(...parsed.filas);
-      numeros.push(...parsed.numeros);
-      errores.push(...parsed.errores);
+      filasErrores += parsed.filasErrores;
+      // El tope de detalle es de toda la carga, no de cada página.
+      errores.push(...parsed.errores.slice(0, LIMITE_DETALLE_ERRORES - errores.length));
       filasTotales += rows.length;
       offset += rows.length;
       if (rows.length < limite) break;
@@ -259,10 +261,10 @@ export async function fetchVentasSource(desde: string, hasta: string): Promise<S
     }
     return {
       filas,
-      numeros,
       filasTotales,
-      filasErrores: errores.length,
+      filasErrores,
       errores,
+      erroresTruncados: filasErrores > errores.length,
       truncado,
     };
   });

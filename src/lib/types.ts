@@ -268,18 +268,17 @@ export type UploadResponse = {
   archivo: string;
   filasTotales: number;
   filasNuevas: number;
-  filasOmitidas: number;
+  /** Filas que existían en el rango recargado y fueron reemplazadas. */
+  filasReemplazadas: number;
+  /** Total de filas con error, aunque `errores` venga cortado. */
   filasErrores: number;
+  /** Detalle de las filas con error; puede venir corto (ver erroresTruncados). */
   errores: UploadRowError[];
+  /** true cuando `errores` no incluye todas las filas con error. */
+  erroresTruncados?: boolean;
   estado: string;
-  /**
-   * Detalle de las filas omitidas (duplicados exactos), con la fila ya
-   * registrada que ocasionó cada omisión. Puede venir corto por límite de
-   * tamaño (ver omitidasTruncadas); el total real siempre está en filasOmitidas.
-   */
-  omitidas?: UploadFilaOmitida[];
-  /** true cuando `omitidas` no incluye todas las filas omitidas. */
-  omitidasTruncadas?: boolean;
+  /** Rango de fechas reemplazado por la carga (`hasta` exclusivo). */
+  rango?: { desde: string; hasta: string };
 };
 
 export type UploadRowError = {
@@ -287,23 +286,12 @@ export type UploadRowError = {
   motivo: string;
 };
 
-/** Una fila omitida junto a la fila existente que la ocasionó. */
-export type UploadFilaOmitida = {
-  /** Mismo numerado que `errores`: 2 = primera fila debajo del encabezado. */
-  fila: number;
-  motivo: string;
-  /** La fila que se quiso importar y fue descartada. */
-  nueva: VentaRow;
-  /** La fila ya registrada con el mismo hash; null si no se pudo recuperar. */
-  existente: VentaRow | null;
-};
-
 export type UploadHistorial = {
   id: number;
   archivo: string;
   filasTotales: number;
   filasNuevas: number;
-  filasOmitidas: number;
+  filasReemplazadas: number;
   filasErrores: number;
   creadoEn: string;
   estado: string;

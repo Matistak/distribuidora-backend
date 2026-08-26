@@ -23,13 +23,23 @@ const INTEGER_COLUMNS = new Set([
   "cod tipo producto",
 ]);
 
+/**
+ * Cuántas filas con error viajan con detalle en la respuesta. El total real
+ * siempre está en `filasErrores`: un archivo entero mal formado produciría
+ * cientos de miles de mensajes, y ni el JSON ni el listado del front tienen
+ * sentido a esa escala.
+ */
+export const LIMITE_DETALLE_ERRORES = 500;
+
 export type ParsedRows = {
   filas: VentaRow[];
-  /** Número de fila (Excel o base) de cada elemento de `filas`, en el mismo orden. */
-  numeros: number[];
   filasTotales: number;
+  /** Total de filas con error, aunque `errores` venga cortado. */
   filasErrores: number;
+  /** Como máximo LIMITE_DETALLE_ERRORES entradas, las primeras por orden de fila. */
   errores: UploadRowError[];
+  /** true cuando `errores` no incluye todas las filas con error. */
+  erroresTruncados: boolean;
 };
 
 export class RowValidationError extends Error {
@@ -329,23 +339,27 @@ export function validateHeaders(
 
 /**
  * Convierte registros crudos en filas de venta, acumulando los errores por fila
- * en lugar de abortar la carga completa. `primeraFila` es el número que se
- * reporta para el primer registro (2 en Excel por el encabezado, 1 en la base).
+ * en lugar de abortar la carga completa. Del detalle se guardan como mucho
+ * LIMITE_DETALLE_ERRORES entradas; `filasErrores` cuenta todas. `primeraFila`
+ * es el número que se reporta para el primer registro (2 en Excel por el
+ * encabezado, 1 en la base).
  */
 export function parseVentaRows(
   rawRows: Record<string, unknown>[],
   primeraFila: number,
 ): ParsedRows {
   const filas: VentaRow[] = [];
-  const numeros: number[] = [];
   const errores: UploadRowError[] = [];
+  let filasErrores = 0;
   rawRows.forEach((row, index) => {
     try {
       filas.push(parseVentaRow(row, index + primeraFila));
-      numeros.push(index + primeraFila);
     } catch (error) {
       if (error instanceof RowValidationError) {
-        errores.push({ fila: index + primeraFila, motivo: error.message });
+        filasErrores += 1;
+        if (errores.length < LIMITE_DETALLE_ERRORES) {
+          errores.push({ fila: index + primeraFila, motivo: error.message });
+        }
         return;
       }
       throw error;
@@ -353,9 +367,9 @@ export function parseVentaRows(
   });
   return {
     filas,
-    numeros,
     filasTotales: rawRows.length,
-    filasErrores: errores.length,
+    filasErrores,
     errores,
+    erroresTruncados: filasErrores > errores.length,
   };
 }

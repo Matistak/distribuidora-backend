@@ -8,14 +8,14 @@ import {
   fetchVentasSource,
   sourceConfig,
 } from "../services/ventasSource.js";
-import { insertRows } from "../services/ventaImporter.js";
+import {
+  type RangoFechas,
+  insertRows,
+  rangoDeFilas,
+  rangoDeMeses,
+} from "../services/ventaImporter.js";
 import { optimizeSqlite } from "../services/sqlitePerformance.js";
-import type {
-  UploadFilaOmitida,
-  UploadHistorial,
-  UploadResponse,
-  VentaRow,
-} from "../lib/types.js";
+import type { UploadHistorial, UploadResponse, VentaRow } from "../lib/types.js";
 
 const cargaBaseSchema = z.object({
   desde: z.string().regex(/^\d{4}-\d{2}$/, "desde debe tener formato YYYY-MM"),
@@ -24,18 +24,20 @@ const cargaBaseSchema = z.object({
 
 type ParsedCarga = {
   filas: VentaRow[];
-  /** Número de fila de cada elemento de `filas`, para reportar omisiones. */
-  numeros: number[];
   filasTotales: number;
   filasErrores: number;
   errores: UploadResponse["errores"];
+  erroresTruncados: boolean;
 };
 
 export async function uploadRoutes(app: FastifyInstance) {
-  /** Persiste una carga (Excel o base externa) dentro de una sola transacción. */
-  async function guardarCarga(origen: string, parsed: ParsedCarga) {
-    let omitidas: UploadFilaOmitida[] = [];
-    let omitidasTruncadas = false;
+  /**
+   * Persiste una carga (Excel o base externa) dentro de una sola transacción.
+   * Es un reemplazo del rango: se borra todo lo que haya entre `rango.desde` y
+   * `rango.hasta` y queda únicamente lo que trajo este origen, sin descartar
+   * ninguna fila.
+   */
+  async function guardarCarga(origen: string, parsed: ParsedCarga, rango: RangoFechas | null) {
     const result = await prisma.$transaction(
       async (tx) => {
         const carga = await tx.carga.create({
@@ -46,14 +48,12 @@ export async function uploadRoutes(app: FastifyInstance) {
             estado: "procesando",
           },
         });
-        const inserto = await insertRows(tx, parsed.filas, parsed.numeros, carga.id);
-        omitidas = inserto.omitidas;
-        omitidasTruncadas = inserto.omitidasTruncadas;
+        const inserto = await insertRows(tx, parsed.filas, carga.id, rango);
         return tx.carga.update({
           where: { id: carga.id },
           data: {
             filasNuevas: inserto.filasNuevas,
-            filasOmitidas: parsed.filas.length - inserto.filasNuevas,
+            filasReemplazadas: inserto.filasReemplazadas,
             estado: parsed.filasErrores > 0 ? "procesado_con_errores" : "procesado",
           },
         });
@@ -72,12 +72,12 @@ export async function uploadRoutes(app: FastifyInstance) {
       archivo: result.archivo,
       filasTotales: result.filasTotales,
       filasNuevas: result.filasNuevas,
-      filasOmitidas: result.filasOmitidas,
+      filasReemplazadas: result.filasReemplazadas,
       filasErrores: result.filasErrores,
       errores: parsed.errores,
+      ...(parsed.erroresTruncados ? { erroresTruncados: true } : {}),
       estado: result.estado,
-      omitidas,
-      ...(omitidasTruncadas ? { omitidasTruncadas: true } : {}),
+      ...(rango ? { rango } : {}),
     };
     return respuesta;
   }
@@ -98,7 +98,8 @@ export async function uploadRoutes(app: FastifyInstance) {
       throw error;
     }
 
-    return reply.send(await guardarCarga(data.filename, parsed));
+    // El Excel no declara su período: el rango a reemplazar sale de sus filas.
+    return reply.send(await guardarCarga(data.filename, parsed, rangoDeFilas(parsed.filas)));
   });
 
   /**
@@ -138,7 +139,12 @@ export async function uploadRoutes(app: FastifyInstance) {
       );
     }
 
-    const respuesta = await guardarCarga(`Base de datos ${desde} a ${hasta}`, parsed);
+    // Acá el rango lo eligió el usuario: se reemplazan los meses completos.
+    const respuesta = await guardarCarga(
+      `Base de datos ${desde} a ${hasta}`,
+      parsed,
+      rangoDeMeses(desde, hasta),
+    );
     return reply.send({ ...respuesta, truncado: parsed.truncado });
   });
 
@@ -151,7 +157,7 @@ export async function uploadRoutes(app: FastifyInstance) {
         archivo: true,
         filasTotales: true,
         filasNuevas: true,
-        filasOmitidas: true,
+        filasReemplazadas: true,
         filasErrores: true,
         creadoEn: true,
         estado: true,

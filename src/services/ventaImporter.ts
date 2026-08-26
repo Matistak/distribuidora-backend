@@ -1,10 +1,7 @@
 import { Prisma } from "@prisma/client";
-import type { UploadFilaOmitida, VentaRow } from "../lib/types.js";
-import { claveVentaHash } from "./claveVenta.js";
+import type { VentaRow } from "../lib/types.js";
 
 const INSERT_BATCH_SIZE = 100;
-/** Cantidad máxima de filas omitidas que viajan con detalle completo en la respuesta. */
-export const LIMITE_DETALLE_OMITIDAS = 200;
 
 const VENTA_COLUMNS = [
   "codCompania", "compania", "codDistribuidora", "distribuidora", "codCliente", "razonSocial",
@@ -12,14 +9,14 @@ const VENTA_COLUMNS = [
   "vtaUnit", "montoIvaBrutaGua", "costoVtaGua", "montoVtaNetaGua", "codCanal", "canal", "codRamo",
   "ramo", "codVendedor", "vendedor", "tipoDoc", "nroDoc", "nroComprobante", "codZona", "zona",
   "codTipoProducto", "tipoProducto", "precioConIva", "precioSinIva", "porcDescuento", "precioLista",
-  "iva", "ciudad", "ruc", "latitud", "longitud", "claveHash", "cargaId",
+  "iva", "ciudad", "ruc", "latitud", "longitud", "cargaId",
 ] as const;
 
 const sqlColumns = Prisma.sql`
   ${Prisma.join(VENTA_COLUMNS.map((column) => Prisma.raw(`"${column}"`)), ", ")}
 `;
 
-function sqlValues(row: VentaRow, cargaId: number, hash: string) {
+function sqlValues(row: VentaRow, cargaId: number) {
   return Prisma.sql`(
     ${row.codCompania}, ${row.compania}, ${row.codDistribuidora}, ${row.distribuidora},
     ${row.codCliente}, ${row.razonSocial}, ${row.codProducto}, ${row.producto},
@@ -30,107 +27,97 @@ function sqlValues(row: VentaRow, cargaId: number, hash: string) {
     ${row.vendedor}, ${row.tipoDoc}, ${row.nroDoc}, ${BigInt(row.nroComprobante)},
     ${row.codZona}, ${row.zona}, ${row.codTipoProducto}, ${row.tipoProducto},
     ${row.precioConIva}, ${row.precioSinIva}, ${row.porcDescuento}, ${row.precioLista},
-    ${row.iva}, ${row.ciudad}, ${row.ruc}, ${row.latitud}, ${row.longitud}, ${hash}, ${cargaId}
+    ${row.iva}, ${row.ciudad}, ${row.ruc}, ${row.latitud}, ${row.longitud}, ${cargaId}
   )`;
 }
 
-/** Convierte un registro crudo de Venta a VentaRow (sin id/cargaId y sin BigInt). */
-function aVentaRow(registro: Record<string, unknown>): VentaRow {
-  const fila: Record<string, unknown> = { ...registro };
-  delete fila["id"];
-  delete fila["cargaId"];
-  delete fila["claveHash"];
-  for (const [clave, valor] of Object.entries(fila)) {
-    if (typeof valor === "bigint") fila[clave] = Number(valor);
+/**
+ * Rango de fechas que reemplaza una carga: `desde` inclusive, `hasta`
+ * exclusivo, ambos como marca ISO-8601 UTC (el mismo formato de `Venta.fecha`,
+ * que ordena igual byte a byte, así el índice de `fecha` sigue sirviendo).
+ */
+export type RangoFechas = {
+  desde: string;
+  hasta: string;
+};
+
+/** Comienzo del día UTC (`YYYY-MM-DDT00:00:00.000Z`) de una fecha ISO. */
+function inicioDelDia(iso: string): string {
+  return `${iso.slice(0, 10)}T00:00:00.000Z`;
+}
+
+/** Comienzo del día UTC siguiente al de la fecha ISO recibida. */
+function inicioDelDiaSiguiente(iso: string): string {
+  const dia = new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
+  return new Date(dia.getTime() + 86_400_000).toISOString();
+}
+
+/**
+ * Rango cubierto por las filas de una carga: del primer día con datos hasta el
+ * final del último. Se usa cuando el origen no declara el rango (el Excel).
+ * Devuelve null si no hay filas.
+ */
+export function rangoDeFilas(rows: VentaRow[]): RangoFechas | null {
+  if (rows.length === 0) return null;
+  let min = rows[0].fecha;
+  let max = rows[0].fecha;
+  for (const row of rows) {
+    if (row.fecha < min) min = row.fecha;
+    if (row.fecha > max) max = row.fecha;
   }
-  return fila as unknown as VentaRow;
+  return { desde: inicioDelDia(min), hasta: inicioDelDiaSiguiente(max) };
+}
+
+/** Rango de meses YYYY-MM (ambos inclusive) como rango de fechas. */
+export function rangoDeMeses(desde: string, hasta: string): RangoFechas {
+  const [anhoDesde, mesDesde] = desde.split("-").map(Number);
+  const [anhoHasta, mesHasta] = hasta.split("-").map(Number);
+  return {
+    desde: new Date(Date.UTC(anhoDesde, mesDesde - 1, 1)).toISOString(),
+    hasta: new Date(Date.UTC(anhoHasta, mesHasta, 1)).toISOString(),
+  };
 }
 
 export type InsertResultado = {
   filasNuevas: number;
-  /** Filas omitidas con su detalle; como máximo LIMITE_DETALLE_OMITIDAS entradas. */
-  omitidas: UploadFilaOmitida[];
-  /** true si hubo más omisiones que las que entran en `omitidas`. */
-  omitidasTruncadas: boolean;
+  /** Filas que había en el rango y fueron reemplazadas por las de esta carga. */
+  filasReemplazadas: number;
 };
 
 /**
- * Inserta por lotes descartando filas repetidas por el índice único de
- * `claveHash` (SHA-256 de todas las columnas). Antes de cada lote busca en la
- * tabla los hashes que ya existen (cargas previas y lotes anteriores de esta
- * misma transacción) para poder reportar, por cada fila omitida, cuál fue la
- * fila idéntica que la ocasionó.
+ * Reemplaza todo lo que haya en el rango por las filas de la carga: primero
+ * borra las ventas cuya `fecha` cae dentro del rango y después inserta las
+ * nuevas por lotes. No se descarta ninguna fila del origen —ni siquiera las
+ * idénticas entre sí—, así lo que queda en la base es exactamente lo que trajo
+ * el Excel o la base externa para ese período.
  */
 export async function insertRows(
   tx: Prisma.TransactionClient,
   rows: VentaRow[],
-  numerosDeFila: number[],
   cargaId: number,
+  rango: RangoFechas | null,
 ): Promise<InsertResultado> {
-  let inserted = 0;
-  let totalOmitidas = 0;
-  const omitidas: UploadFilaOmitida[] = [];
-  // Primera aparición de cada clave dentro de esta misma carga.
-  const vistas = new Map<string, VentaRow>();
+  const filasReemplazadas = rango
+    ? await tx.$executeRaw(
+        Prisma.sql`DELETE FROM "Venta" WHERE "fecha" >= ${rango.desde} AND "fecha" < ${rango.hasta}`,
+      )
+    : 0;
 
+  let inserted = 0;
   for (let index = 0; index < rows.length; index += INSERT_BATCH_SIZE) {
     const batch = rows.slice(index, index + INSERT_BATCH_SIZE);
-
-    const existentes = new Map<string, VentaRow>();
-    const hashes = batch.map((row) => claveVentaHash(row));
-    const encontradas = await tx.$queryRaw<Record<string, unknown>[]>(
-      Prisma.sql`SELECT * FROM "Venta" WHERE "claveHash" IN (${Prisma.join(
-        hashes.map((h) => Prisma.sql`${h}`),
-        ", ",
-      )})`,
+    const values = Prisma.join(
+      batch.map((row) => sqlValues(row, cargaId)),
+      ", ",
     );
-    for (const registro of encontradas) {
-      const existente = aVentaRow(registro);
-      existentes.set(claveVentaHash(existente), existente);
-    }
-
-    const nuevas: VentaRow[] = [];
-    const nuevosHashes: string[] = [];
-    for (let offset = 0; offset < batch.length; offset += 1) {
-      const row = batch[offset];
-      const hash = hashes[offset];
-      const repetidaEnCarga = vistas.get(hash);
-      const registrada = existentes.get(hash);
-      if (!repetidaEnCarga && !registrada) {
-        nuevas.push(row);
-        nuevosHashes.push(hash);
-        vistas.set(hash, row);
-        continue;
-      }
-      totalOmitidas += 1;
-      if (omitidas.length >= LIMITE_DETALLE_OMITIDAS) continue;
-      omitidas.push({
-        fila: numerosDeFila[index + offset] ?? index + offset + 1,
-        motivo: repetidaEnCarga
-          ? "Fila idéntica repetida dentro de la misma carga"
-          : "Ya existe una fila idéntica",
-        nueva: row,
-        existente: repetidaEnCarga ?? registrada ?? null,
-      });
-    }
-
-    if (nuevas.length > 0) {
-      const values = Prisma.join(
-        nuevas.map((row, i) => sqlValues(row, cargaId, nuevosHashes[i])),
-        ", ",
-      );
-      inserted += await tx.$executeRaw<number>(
-        Prisma.sql`INSERT OR IGNORE INTO "Venta" (${sqlColumns}) VALUES ${values}`,
-      );
-    }
+    inserted += await tx.$executeRaw(
+      Prisma.sql`INSERT INTO "Venta" (${sqlColumns}) VALUES ${values}`,
+    );
   }
+
   await insertClientes(tx, rows);
   await insertVendedores(tx, rows);
-  return {
-    filasNuevas: inserted,
-    omitidas,
-    omitidasTruncadas: totalOmitidas > omitidas.length,
-  };
+  return { filasNuevas: inserted, filasReemplazadas };
 }
 
 /** Deduplica y persiste los clientes presentes en la carga (tabla Cliente). */
