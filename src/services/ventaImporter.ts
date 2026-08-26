@@ -70,8 +70,8 @@ export async function insertRows(
   let inserted = 0;
   let totalOmitidas = 0;
   const omitidas: UploadFilaOmitida[] = [];
-  // Primera aparición de cada clave dentro de esta misma carga.
-  const vistas = new Map<string, VentaRow>();
+  // Primera aparición de cada clave dentro de esta misma carga, con su nro de fila.
+  const vistas = new Map<string, { row: VentaRow; fila: number }>();
 
   for (let index = 0; index < rows.length; index += INSERT_BATCH_SIZE) {
     const batch = rows.slice(index, index + INSERT_BATCH_SIZE);
@@ -94,23 +94,25 @@ export async function insertRows(
     for (let offset = 0; offset < batch.length; offset += 1) {
       const row = batch[offset];
       const hash = hashes[offset];
+      const fila = numerosDeFila[index + offset] ?? index + offset + 1;
       const repetidaEnCarga = vistas.get(hash);
       const registrada = existentes.get(hash);
       if (!repetidaEnCarga && !registrada) {
         nuevas.push(row);
         nuevosHashes.push(hash);
-        vistas.set(hash, row);
+        vistas.set(hash, { row, fila });
         continue;
       }
       totalOmitidas += 1;
       if (omitidas.length >= LIMITE_DETALLE_OMITIDAS) continue;
       omitidas.push({
-        fila: numerosDeFila[index + offset] ?? index + offset + 1,
+        fila,
         motivo: repetidaEnCarga
           ? "Fila idéntica repetida dentro de la misma carga"
           : "Ya existe una fila idéntica",
         nueva: row,
-        existente: repetidaEnCarga ?? registrada ?? null,
+        existente: repetidaEnCarga?.row ?? registrada ?? null,
+        filaExistente: repetidaEnCarga?.fila ?? null,
       });
     }
 

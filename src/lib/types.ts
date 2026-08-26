@@ -296,6 +296,12 @@ export type UploadFilaOmitida = {
   nueva: VentaRow;
   /** La fila ya registrada con el mismo hash; null si no se pudo recuperar. */
   existente: VentaRow | null;
+  /**
+   * Número de fila de `existente` dentro de este mismo archivo. Sólo se conoce
+   * cuando la fila que ocasionó la omisión vino en esta misma carga; si ya
+   * estaba en la base por una carga anterior es null.
+   */
+  filaExistente: number | null;
 };
 
 export type UploadHistorial = {
