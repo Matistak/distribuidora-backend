@@ -345,7 +345,8 @@ async function detalleClientesSinCompras(
         COALESCE(MAX(v."razonSocial"), 'Cód. ' || v."codCliente") AS "nombre",
         MAX(v."ruc") AS "ruc",
         MAX(v."fecha") AS "ultimaCompra",
-        CAST(julianday(${referencia}) - julianday(MAX(v."fecha")) AS INTEGER) AS "diasSinComprar",
+        CAST(julianday(${referencia}) - julianday(substr(MAX(v."fecha"), 1, 10)) AS INTEGER)
+          AS "diasSinComprar",
         CAST(COALESCE(SUM(CASE WHEN v."fecha" >= ${desdeAnho} THEN v."montoVtaNetaGua" END), 0) AS REAL)
           AS "montoUltimoAnho",
         COUNT(DISTINCT v."nroDoc") AS "compras",

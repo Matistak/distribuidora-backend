@@ -75,6 +75,8 @@ Antes de agregar optimizaciones, se debe probar con al menos 25.000, 300.000 y
 | `POST` | `/api/uploads`     | Subir y procesar archivo Excel |
 | `GET`  | `/api/uploads`     | Historial de cargas            |
 | `GET`  | `/api/uploads/:id` | Estado de una carga            |
+| `GET`  | `/api/uploads/origen` | Si la base externa está configurada (no la consulta) |
+| `POST` | `/api/uploads/base` | Importar desde la base externa `{ desde, hasta }` |
 
 ### Consultas
 

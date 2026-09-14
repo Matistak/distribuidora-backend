@@ -74,7 +74,6 @@ model Venta {
   cargaId Int
   carga   Carga @relation(fields: [cargaId], references: [id])
 
-  @@unique([nroDoc, codProducto, nroComprobante])
   @@index([fecha])
   @@index([fecha(sort: Desc), nroDoc(sort: Asc)])
   @@index([vendedor])
@@ -90,7 +89,7 @@ model Carga {
   archivo      String
   filasTotales Int
   filasNuevas  Int      @default(0)
-  filasOmitidas Int     @default(0)
+  filasReemplazadas Int @default(0)
   filasErrores  Int     @default(0)
   estado       String   @default("procesado")
   creadoEn     DateTime @default(now())

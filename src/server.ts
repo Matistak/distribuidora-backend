@@ -15,6 +15,7 @@ import { clientesRoutes } from "./routes/clientes.js";
 import { chatRoutes } from "./routes/chat.js";
 import { configureSqlite } from "./services/sqlitePerformance.js";
 import { runWeeklyBackup } from "./backups.js";
+import { diagnosticarOrigen } from "./services/ventasSource.js";
 
 export const prisma = new PrismaClient();
 
@@ -29,10 +30,12 @@ async function ensureImportSchema() {
   }
 
   // Prisma guarda los DateTime de SQLite como epoch en milisegundos. Convertimos
-  // esos valores heredados para que fecha quede siempre como YYYY-MM-DD.
+  // esos valores heredados al texto ISO-8601 completo que usa el importador
+  // (YYYY-MM-DDTHH:MM:SS.sssZ), conservando hora, minuto, segundo y ms.
   await prisma.$executeRaw`
     UPDATE "Venta"
-    SET "fecha" = strftime('%Y-%m-%d', CAST("fecha" AS INTEGER) / 1000, 'unixepoch')
+    SET "fecha" = strftime('%Y-%m-%dT%H:%M:%f', CAST("fecha" AS INTEGER) / 1000.0, 'unixepoch')
+                  || 'Z'
     WHERE typeof("fecha") IN ('integer', 'real')
        OR (
          typeof("fecha") = 'text'
@@ -132,6 +135,27 @@ export async function buildApp() {
   return app;
 }
 
+/**
+ * Verifica una única vez al arrancar la conexión con la base externa de ventas,
+ * sólo para informar por consola. Es no bloqueante: si falla, el backend sigue
+ * funcionando y únicamente queda deshabilitada la carga por base de datos.
+ * Después de esto la conexión se abre sólo cuando la ventana de carga lo pide.
+ */
+async function reportarOrigenExterno() {
+  const diagnostico = await diagnosticarOrigen();
+  if (diagnostico.estado === "no-configurado") {
+    console.log("  ⚪ Carga por base de datos: deshabilitada (VENTAS_SOURCE_URL sin definir)\n");
+    return;
+  }
+  if (diagnostico.estado === "error") {
+    console.log(`  ❌ Base de datos externa (${diagnostico.tabla}): sin conexión`);
+    console.log(`     ${diagnostico.motivo}\n`);
+    return;
+  }
+  console.log(`  ✅ Base de datos externa conectada (solo lectura): ${diagnostico.tabla}`);
+  console.log(`     Columnas verificadas. Se consulta sólo al pedir una carga.\n`);
+}
+
 async function start() {
   const app = await buildApp();
 
@@ -147,6 +171,8 @@ async function start() {
     console.log(`     POST   /api/uploads        — subir Excel`);
     console.log(`     GET    /api/uploads        — historial de cargas`);
     console.log(`     GET    /api/uploads/:id    — estado de carga`);
+    console.log(`     GET    /api/uploads/origen — estado de la base externa`);
+    console.log(`     POST   /api/uploads/base   — importar desde la base externa`);
     console.log(`     GET    /api/dashboard      — KPIs + rankings`);
     console.log(`     GET    /api/ventas         — filas paginadas`);
     console.log(`     GET    /api/vendedores     — KPIs + resumen por vendedor`);
@@ -161,6 +187,8 @@ async function start() {
     console.log(`     POST   /api/chat/conversations/:id/messages — enviar mensaje (SSE)`);
     console.log(`     POST   /api/chat/conversations/:id/cancel — interrumpir turno`);
     console.log(`     GET    /health             — health check\n`);
+
+    await reportarOrigenExterno();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
